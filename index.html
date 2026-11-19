@@ -1,0 +1,711 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Khandelwal Food Mart - Scan & Earn</title>
+  
+  <!-- Tailwind CSS -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  
+  <!-- React & Babel -->
+  <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+  <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+</head>
+<body class="bg-slate-50 text-slate-900 font-sans">
+  <div id="root"></div>
+
+  <script type="text/babel" data-type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
+    import {
+      getFirestore, doc, getDoc, setDoc, updateDoc,
+      collection, addDoc, query, where,
+      onSnapshot, serverTimestamp, increment, getDocs
+    } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+
+    const { useState, useEffect, useRef } = React;
+
+    // ==========================================
+    // 1. FIREBASE CONFIG (Connected)
+    // ==========================================
+    const firebaseConfig = {
+      apiKey: "AIzaSyDqy3SmMrTyO1glyairloHUnVso306Ow2o",
+      authDomain: "kfm-loyalty.firebaseapp.com",
+      projectId: "kfm-loyalty",
+      storageBucket: "kfm-loyalty.firebasestorage.app",
+      messagingSenderId: "388917961664",
+      appId: "1:388917961664:web:2eca6ac24b0889a4845e25"
+    };
+
+    const app = initializeApp(firebaseConfig);
+    const db = getFirestore(app);
+
+    // ==========================================
+    // 2. STORE SETTINGS
+    // ==========================================
+    const STORE_NAME = "KHANDELWAL FOOD MART";
+    const MIN_BILL_AMOUNT = 1000;
+    const STARS_FOR_REWARD = 5;
+    const ADMIN_PIN = "8052"; // Owner Password
+
+    // Image Compressor (Photo ko ~120KB ka banata hai taaki DB full na ho)
+    const compressBillImage = (file) => {
+      return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.readAsDataURL(file);
+        reader.onload = (event) => {
+          const img = new Image();
+          img.src = event.target.result;
+          img.onload = () => {
+            const canvas = document.createElement("canvas");
+            const MAX_WIDTH = 900;
+            const scale = MAX_WIDTH / img.width;
+            canvas.width = img.width > MAX_WIDTH ? MAX_WIDTH : img.width;
+            canvas.height = img.width > MAX_WIDTH ? img.height * scale : img.height;
+            const ctx = canvas.getContext("2d");
+            ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+            resolve(canvas.toDataURL("image/jpeg", 0.65));
+          };
+          img.onerror = reject;
+        };
+        reader.onerror = reject;
+      });
+    };
+
+    // ==========================================
+    // MAIN APP
+    // ==========================================
+    function App() {
+      const isAdminUrl = new URLSearchParams(window.location.search).get("admin") === "true";
+      const [mode, setMode] = useState(isAdminUrl ? "admin" : "customer");
+      const tapCountRef = useRef(0);
+      const tapTimerRef = useRef(null);
+
+      // Triple Tap on Store Title to open Owner Login
+      const handleTitleTap = () => {
+        tapCountRef.current += 1;
+        if (tapTimerRef.current) clearTimeout(tapTimerRef.current);
+
+        if (tapCountRef.current >= 3) {
+          tapCountRef.current = 0;
+          setMode("admin");
+          return;
+        }
+
+        tapTimerRef.current = setTimeout(() => {
+          tapCountRef.current = 0;
+        }, 700);
+      };
+
+      return (
+        <div className="min-h-screen pb-16">
+          <header className="bg-emerald-700 text-white px-4 py-3.5 shadow-md flex items-center justify-between sticky top-0 z-30 select-none">
+            <div onClick={handleTitleTap} className="cursor-pointer">
+              <h1 className="font-bold text-lg tracking-wide">{STORE_NAME}</h1>
+              <p className="text-xs text-emerald-100">Scan & Earn Star Loyalty</p>
+            </div>
+            {mode === "admin" && (
+              <button
+                onClick={() => setMode("customer")}
+                className="text-xs bg-emerald-800 hover:bg-emerald-900 px-3 py-1.5 rounded-full border border-emerald-600 font-medium"
+              >
+                ← Customer View
+              </button>
+            )}
+          </header>
+
+          <main className="max-w-xl mx-auto p-4">
+            {mode === "customer" ? <CustomerPortal /> : <AdminPortal />}
+          </main>
+        </div>
+      );
+    }
+
+    // ==========================================
+    // CUSTOMER PORTAL (QR SCAN VIEW)
+    // ==========================================
+    function CustomerPortal() {
+      const [phone, setPhone] = useState(() => localStorage.getItem("kfm_phone") || "");
+      const [name, setName] = useState("");
+      const [customer, setCustomer] = useState(null);
+      const [isNewUser, setIsNewUser] = useState(false);
+      const [loading, setLoading] = useState(false);
+
+      const [billNumber, setBillNumber] = useState("");
+      const [claimedAmount, setClaimedAmount] = useState("");
+      const [previewImage, setPreviewImage] = useState(null);
+      const [uploading, setUploading] = useState(false);
+      const [msg, setMsg] = useState(null);
+      const [myBills, setMyBills] = useState([]);
+
+      useEffect(() => {
+        if (phone.length === 10) loadCustomer(phone);
+      }, []);
+
+      const loadCustomer = async (cleanPhone) => {
+        setLoading(true);
+        try {
+          const custRef = doc(db, "customers", cleanPhone);
+          const snap = await getDoc(custRef);
+
+          if (!snap.exists()) {
+            setIsNewUser(true);
+            setLoading(false);
+            return;
+          }
+
+          localStorage.setItem("kfm_phone", cleanPhone);
+          setIsNewUser(false);
+
+          onSnapshot(custRef, (d) => {
+            if (d.exists()) setCustomer(d.data());
+          });
+
+          const q = query(collection(db, "bill_submissions"), where("phone", "==", cleanPhone));
+          onSnapshot(q, (qSnap) => {
+            const list = [];
+            qSnap.forEach((d) => list.push({ id: d.id, ...d.data() }));
+            list.sort((a, b) => (b.createdAt?.seconds || 0) - (a.createdAt?.seconds || 0));
+            setMyBills(list);
+          });
+        } catch (err) {
+          alert("Firebase error: Firestore Rules check karein.");
+        }
+        setLoading(false);
+      };
+
+      const handleLogin = async (e) => {
+        e.preventDefault();
+        const cleanPhone = phone.replace(/\D/g, "").slice(-10);
+        if (cleanPhone.length !== 10) return alert("10-digit mobile number dalein.");
+
+        if (isNewUser) {
+          if (!name.trim()) return alert("Apna naam likhein.");
+          setLoading(true);
+          await setDoc(doc(db, "customers", cleanPhone), {
+            phone: cleanPhone,
+            name: name.trim(),
+            stars: 0,
+            totalApprovedBills: 0,
+            rewardsEarned: 0
+          });
+          await loadCustomer(cleanPhone);
+        } else {
+          await loadCustomer(cleanPhone);
+        }
+      };
+
+      const handleFile = async (e) => {
+        const file = e.target.files?.[0];
+        if (!file) return;
+        const compressed = await compressBillImage(file);
+        setPreviewImage(compressed);
+        setMsg(null);
+      };
+
+      const handleBillSubmit = async (e) => {
+        e.preventDefault();
+        const cleanBillNo = billNumber.trim().toUpperCase();
+        const amt = claimedAmount ? Number(claimedAmount) : 0;
+
+        if (claimedAmount && amt < MIN_BILL_AMOUNT) {
+          return setMsg({ type: "err", text: `Star sirf ₹${MIN_BILL_AMOUNT}+ ke bill par milta hai.` });
+        }
+        if (!previewImage) return setMsg({ type: "err", text: "Bill ki clear photo upload karein." });
+
+        setUploading(true);
+        setMsg(null);
+
+        try {
+          if (cleanBillNo) {
+            const dupQ = query(collection(db, "bill_submissions"), where("billNumber", "==", cleanBillNo));
+            const dupSnap = await getDocs(dupQ);
+            if (dupSnap.docs.some((d) => d.data().status !== "rejected")) {
+              setUploading(false);
+              return setMsg({ type: "err", text: `Bill #${cleanBillNo} pehle hi upload ho chuka hai.` });
+            }
+          }
+
+          await addDoc(collection(db, "bill_submissions"), {
+            phone: customer.phone,
+            customerName: customer.name,
+            billNumber: cleanBillNo || "PHOTO-BILL",
+            claimedAmount: amt,
+            imageBase64: previewImage,
+            status: "pending",
+            createdAt: serverTimestamp()
+          });
+
+          setBillNumber("");
+          setClaimedAmount("");
+          setPreviewImage(null);
+          setMsg({
+            type: "ok",
+            text: "✅ Bill upload ho gaya! Verification ke baad Star add ho jayega."
+          });
+        } catch (err) {
+          setMsg({ type: "err", text: "Upload fail hua. Internet ya Firestore Rules check karein." });
+        }
+        setUploading(false);
+      };
+
+      if (!customer) {
+        return (
+          <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-6 mt-4">
+            <div className="text-center mb-6">
+              <div className="text-4xl mb-2">⭐</div>
+              <h2 className="text-xl font-bold text-slate-800">Apna Digital Star Card Dekhein</h2>
+              <p className="text-sm text-slate-500 mt-1">
+                Har ₹{MIN_BILL_AMOUNT}+ ki shopping par 1 Star. {STARS_FOR_REWARD} Stars = Free Reward!
+              </p>
+            </div>
+
+            <form onSubmit={handleLogin} className="space-y-4">
+              <div>
+                <label className="block text-xs font-bold text-slate-600 uppercase mb-1">
+                  Mobile Number
+                </label>
+                <input
+                  type="tel"
+                  maxLength={10}
+                  placeholder="10-digit mobile number"
+                  value={phone}
+                  onChange={(e) => setPhone(e.target.value.replace(/\D/g, ""))}
+                  className="w-full px-4 py-3 border border-slate-300 rounded-xl text-lg tracking-wider outline-none focus:ring-2 focus:ring-emerald-500"
+                  required
+                />
+              </div>
+
+              {isNewUser && (
+                <div>
+                  <label className="block text-xs font-bold text-slate-600 uppercase mb-1">
+                    Aapka Naam (New Registration)
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="Apna shubh naam likhein"
+                    value={name}
+                    onChange={(e) => setName(e.target.value)}
+                    className="w-full px-4 py-3 border border-slate-300 rounded-xl outline-none focus:ring-2 focus:ring-emerald-500"
+                    required
+                  />
+                </div>
+              )}
+
+              <button
+                type="submit"
+                disabled={loading}
+                className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-3 rounded-xl shadow"
+              >
+                {loading ? "Checking..." : isNewUser ? "Card Banayein" : "Aage Badhein →"}
+              </button>
+            </form>
+          </div>
+        );
+      }
+
+      const rewardReady = customer.stars >= STARS_FOR_REWARD;
+
+      return (
+        <div className="space-y-5 mt-2">
+          {/* Star Card */}
+          <div className="bg-gradient-to-br from-emerald-800 to-teal-700 text-white rounded-2xl p-5 shadow-lg">
+            <div className="flex justify-between items-start">
+              <div>
+                <p className="text-xs uppercase tracking-wider text-emerald-200">Loyalty Member</p>
+                <h2 className="text-xl font-bold">{customer.name}</h2>
+                <p className="text-xs text-emerald-100">+91 {customer.phone}</p>
+              </div>
+              <button
+                onClick={() => {
+                  localStorage.removeItem("kfm_phone");
+                  setCustomer(null);
+                  setPhone("");
+                }}
+                className="text-xs bg-white/15 px-2.5 py-1 rounded-lg"
+              >
+                Change
+              </button>
+            </div>
+
+            <div className="my-5 bg-black/20 rounded-xl p-4">
+              <div className="flex justify-between text-xs mb-3">
+                <span className="text-emerald-100">Aapke Stars</span>
+                <span className="font-bold text-amber-300">
+                  {customer.stars} / {STARS_FOR_REWARD} Stars
+                </span>
+              </div>
+              <div className="grid grid-cols-5 gap-2">
+                {Array.from({ length: STARS_FOR_REWARD }).map((_, i) => {
+                  const filled = i < customer.stars;
+                  return (
+                    <div
+                      key={i}
+                      className={`aspect-square rounded-xl flex items-center justify-center text-2xl border ${
+                        filled
+                          ? "bg-amber-400 border-amber-300 shadow"
+                          : "bg-white/10 border-white/20 opacity-40"
+                      }`}
+                    >
+                      ⭐
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+
+            <div className="bg-white/10 rounded-xl p-3 text-xs">
+              {rewardReady ? (
+                <p className="font-bold text-amber-300 text-sm">
+                  🎉 Badhai ho! Aapka Card complete ho gaya hai! Offers and Gifts will be updated to you on WhatsApp.
+                </p>
+              ) : (
+                <p className="text-emerald-50 font-medium">
+                  Offers and Gifts will be updated to you on WhatsApp once you complete the Card
+                </p>
+              )}
+            </div>
+          </div>
+
+          {/* Upload Bill Form */}
+          <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-5">
+            <h3 className="font-bold text-slate-800">📸 Naya Bill Upload Karein (₹{MIN_BILL_AMOUNT}+)</h3>
+            <p className="text-xs text-slate-500 mt-1">
+              Bill ki photo upload karein. Verify hote hi Star jud jayega.
+            </p>
+
+            {msg && (
+              <div
+                className={`mt-3 p-3 rounded-xl text-xs ${
+                  msg.type === "ok"
+                    ? "bg-emerald-50 text-emerald-800 border border-emerald-200"
+                    : "bg-red-50 text-red-700 border border-red-200"
+                }`}
+              >
+                {msg.text}
+              </div>
+            )}
+
+            <form onSubmit={handleBillSubmit} className="space-y-3 mt-4">
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-bold text-slate-600 mb-1">Bill Number (Optional)</label>
+                  <input
+                    type="text"
+                    placeholder="e.g. 1042"
+                    value={billNumber}
+                    onChange={(e) => setBillNumber(e.target.value)}
+                    className="w-full px-3 py-2 border border-slate-300 rounded-xl text-sm uppercase"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-slate-600 mb-1">Total Amount (Optional)</label>
+                  <input
+                    type="number"
+                    placeholder="1000+"
+                    value={claimedAmount}
+                    onChange={(e) => setClaimedAmount(e.target.value)}
+                    className="w-full px-3 py-2 border border-slate-300 rounded-xl text-sm"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-600 mb-1">Bill Ki Photo *</label>
+                <label className="border-2 border-dashed border-slate-300 rounded-xl p-4 flex flex-col items-center justify-center cursor-pointer bg-slate-50">
+                  {previewImage ? (
+                    <img src={previewImage} className="max-h-48 rounded-lg" />
+                  ) : (
+                    <span className="text-xs font-semibold text-emerald-700 py-4">
+                      📷 Camera Kholne / Photo Chunne ke liye Tap Karein
+                    </span>
+                  )}
+                  <input type="file" accept="image/*" capture="environment" onChange={handleFile} className="hidden" />
+                </label>
+              </div>
+
+              <button
+                type="submit"
+                disabled={uploading}
+                className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-3 rounded-xl shadow"
+              >
+                {uploading ? "Uploading..." : "Submit Bill for Star"}
+              </button>
+            </form>
+          </div>
+
+          {/* Customer Bill History */}
+          {myBills.length > 0 && (
+            <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-5">
+              <h3 className="font-bold text-slate-800 text-sm mb-3">Aapke Uploaded Bills</h3>
+              <div className="space-y-2">
+                {myBills.map((b) => (
+                  <div key={b.id} className="flex items-center justify-between p-3 rounded-xl bg-slate-50 border">
+                    <div>
+                      <p className="text-sm font-bold">
+                        {b.billNumber && b.billNumber !== "PHOTO-BILL" ? `Bill #${b.billNumber}` : "Uploaded Bill"}
+                        {b.claimedAmount > 0 ? ` • ₹${b.claimedAmount}` : ""}
+                      </p>
+                      {b.status === "rejected" && b.rejectReason && (
+                        <p className="text-xs text-red-600">Reason: {b.rejectReason}</p>
+                      )}
+                    </div>
+                    <span
+                      className={`text-xs font-bold px-2.5 py-1 rounded-full ${
+                        b.status === "pending"
+                          ? "bg-amber-100 text-amber-800"
+                          : b.status === "approved"
+                          ? "bg-emerald-100 text-emerald-800"
+                          : "bg-red-100 text-red-800"
+                      }`}
+                    >
+                      {b.status === "pending" ? "⏳ Pending" : b.status === "approved" ? "✅ +1 Star" : "❌ Rejected"}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      );
+    }
+
+    // ==========================================
+    // ADMIN PORTAL (VERIFICATION)
+    // ==========================================
+    function AdminPortal() {
+      const [unlocked, setUnlocked] = useState(false);
+      const [pin, setPin] = useState("");
+      const [tab, setTab] = useState("pending");
+      const [pendingBills, setPendingBills] = useState([]);
+      const [customers, setCustomers] = useState([]);
+      const [zoomImg, setZoomImg] = useState(null);
+
+      useEffect(() => {
+        if (!unlocked) return;
+
+        const qBills = query(collection(db, "bill_submissions"), where("status", "==", "pending"));
+        const unsub1 = onSnapshot(qBills, (snap) => {
+          const list = [];
+          snap.forEach((d) => list.push({ id: d.id, ...d.data() }));
+          list.sort((a, b) => (a.createdAt?.seconds || 0) - (b.createdAt?.seconds || 0));
+          setPendingBills(list);
+        });
+
+        const unsub2 = onSnapshot(collection(db, "customers"), (snap) => {
+          const list = [];
+          snap.forEach((d) => list.push(d.data()));
+          list.sort((a, b) => b.totalApprovedBills - a.totalApprovedBills);
+          setCustomers(list);
+        });
+
+        return () => {
+          unsub1();
+          unsub2();
+        };
+      }, [unlocked]);
+
+      const handleApprove = async (bill) => {
+        const custRef = doc(db, "customers", bill.phone);
+        const snap = await getDoc(custRef);
+        const newStars = (snap.exists() ? snap.data().stars || 0 : 0) + 1;
+
+        await updateDoc(custRef, {
+          stars: newStars,
+          totalApprovedBills: increment(1)
+        });
+
+        await updateDoc(doc(db, "bill_submissions", bill.id), {
+          status: "approved",
+          imageBase64: ""
+        });
+
+        if (window.confirm(`Approved! ${bill.customerName} ke ab ${newStars} Stars ho gaye.\nWhatsApp message bhejna hai?`)) {
+          const billTag = bill.billNumber && bill.billNumber !== "PHOTO-BILL" ? `Bill #${bill.billNumber}` : "bill";
+          const msg =
+            newStars >= STARS_FOR_REWARD
+              ? `Namaste ${bill.customerName} ji! ${STORE_NAME} mein aapka ${billTag} verify ho gaya hai aur aapke ${STARS_FOR_REWARD}/${STARS_FOR_REWARD} Stars poore ho gaye hain! Aapka special Offer/Gift ready hai—agli shopping par counter par claim karein.`
+              : `Namaste ${bill.customerName} ji! ${STORE_NAME} mein aapka ${billTag} verify ho gaya hai (+1 Star). Total Stars: ${newStars}/${STARS_FOR_REWARD}.`;
+          window.open(`https://wa.me/91${bill.phone}?text=${encodeURIComponent(msg)}`, "_blank");
+        }
+      };
+
+      const handleReject = async (bill) => {
+        const reason = window.prompt("Reject reason likhein:", "Bill ₹1000 se kam hai ya photo clear nahi hai");
+        if (reason === null) return;
+        await updateDoc(doc(db, "bill_submissions", bill.id), {
+          status: "rejected",
+          rejectReason: reason,
+          imageBase64: ""
+        });
+      };
+
+      const handleRedeem = async (cust) => {
+        if (!window.confirm(`${cust.name} ka reward redeem mark karein? (${STARS_FOR_REWARD} stars reset honge)`)) return;
+        await updateDoc(doc(db, "customers", cust.phone), {
+          stars: cust.stars - STARS_FOR_REWARD,
+          rewardsEarned: increment(1)
+        });
+      };
+
+      if (!unlocked) {
+        return (
+          <div className="bg-white rounded-2xl shadow-sm border p-6 mt-6 max-w-sm mx-auto">
+            <h2 className="text-lg font-bold text-center">Owner Verification Portal</h2>
+            <form
+              onSubmit={(e) => {
+                e.preventDefault();
+                pin === ADMIN_PIN ? setUnlocked(true) : alert("Galat Password!");
+              }}
+              className="mt-4 space-y-3"
+            >
+              <input
+                type="password"
+                placeholder="Enter Owner Password"
+                value={pin}
+                onChange={(e) => setPin(e.target.value)}
+                className="w-full text-center text-lg py-2.5 border rounded-xl outline-none focus:ring-2 focus:ring-emerald-600"
+                autoFocus
+              />
+              <button className="w-full bg-slate-900 text-white font-bold py-2.5 rounded-xl">
+                Unlock Dashboard
+              </button>
+            </form>
+          </div>
+        );
+      }
+
+      return (
+        <div className="space-y-4 mt-2">
+          <div className="grid grid-cols-2 gap-2 bg-slate-200 p-1 rounded-xl">
+            <button
+              onClick={() => setTab("pending")}
+              className={`py-2 rounded-lg text-xs font-bold ${
+                tab === "pending" ? "bg-white text-emerald-800 shadow" : "text-slate-600"
+              }`}
+            >
+              🧾 Pending Bills ({pendingBills.length})
+            </button>
+            <button
+              onClick={() => setTab("customers")}
+              className={`py-2 rounded-lg text-xs font-bold ${
+                tab === "customers" ? "bg-white text-emerald-800 shadow" : "text-slate-600"
+              }`}
+            >
+              👥 Customers ({customers.length})
+            </button>
+          </div>
+
+          {tab === "pending" && (
+            <div className="space-y-4">
+              {pendingBills.length === 0 ? (
+                <div className="bg-white rounded-2xl p-8 text-center border">
+                  <p className="font-bold text-slate-700">✅ Koi pending bill nahi hai!</p>
+                </div>
+              ) : (
+                pendingBills.map((b) => (
+                  <div key={b.id} className="bg-white rounded-2xl shadow-sm border overflow-hidden">
+                    <div className="p-4 border-b flex justify-between">
+                      <div>
+                        <h3 className="font-bold">{b.customerName}</h3>
+                        <p className="text-xs text-slate-500">+91 {b.phone}</p>
+                      </div>
+                      <div className="text-right">
+                        {b.billNumber && b.billNumber !== "PHOTO-BILL" && (
+                          <span className="bg-amber-100 text-amber-900 font-bold text-xs px-2 py-1 rounded">
+                            Bill #{b.billNumber}
+                          </span>
+                        )}
+                        {b.claimedAmount > 0 && (
+                          <p className="text-sm font-bold text-emerald-700 mt-1">₹{b.claimedAmount}</p>
+                        )}
+                      </div>
+                    </div>
+
+                    {b.imageBase64 && (
+                      <div className="bg-slate-900 flex justify-center p-2">
+                        <img
+                          src={b.imageBase64}
+                          onClick={() => setZoomImg(b.imageBase64)}
+                          className="max-h-64 object-contain cursor-zoom-in"
+                        />
+                      </div>
+                    )}
+
+                    <div className="p-3 grid grid-cols-2 gap-3 bg-slate-50">
+                      <button
+                        onClick={() => handleReject(b)}
+                        className="py-2.5 rounded-xl border border-red-200 bg-white text-red-600 font-bold text-sm"
+                      >
+                        ❌ Reject
+                      </button>
+                      <button
+                        onClick={() => handleApprove(b)}
+                        className="py-2.5 rounded-xl bg-emerald-600 text-white font-bold text-sm"
+                      >
+                        ✅ Approve (+1 Star)
+                      </button>
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+          )}
+
+          {tab === "customers" && (
+            <div className="space-y-2.5">
+              {customers.map((c) => {
+                const waMsg = `Namaste ${c.name} ji! ${STORE_NAME} mein aapke ${c.stars}/${STARS_FOR_REWARD} Stars hain. Is hafte ₹1000+ ki shopping par agla Star jodein!`;
+                return (
+                  <div key={c.phone} className="bg-white rounded-2xl p-4 border flex items-center justify-between">
+                    <div>
+                      <p className="font-bold">
+                        {c.name}{" "}
+                        <span className="text-xs bg-amber-100 text-amber-800 px-2 py-0.5 rounded-full">
+                          {c.stars} ★
+                        </span>
+                      </p>
+                      <p className="text-xs text-slate-500">
+                        {c.phone} • Approved Bills: {c.totalApprovedBills} • Rewards: {c.rewardsEarned}
+                      </p>
+                    </div>
+                    <div className="flex gap-2">
+                      {c.stars >= STARS_FOR_REWARD && (
+                        <button
+                          onClick={() => handleRedeem(c)}
+                          className="bg-amber-500 text-white text-xs font-bold px-3 py-2 rounded-xl"
+                        >
+                          Redeem
+                        </button>
+                      )}
+                      <a
+                        href={`https://wa.me/91${c.phone}?text=${encodeURIComponent(waMsg)}`}
+                        target="_blank"
+                        className="p-2 rounded-xl bg-emerald-50 text-emerald-700 border border-emerald-200 text-sm"
+                      >
+                        💬
+                      </a>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+
+          {zoomImg && (
+            <div
+              onClick={() => setZoomImg(null)}
+              className="fixed inset-0 bg-black/90 z-50 flex items-center justify-center p-4"
+            >
+              <img src={zoomImg} className="max-w-full max-h-full rounded-lg" />
+            </div>
+          )}
+        </div>
+      );
+    }
+
+    ReactDOM.createRoot(document.getElementById("root")).render(<App />);
+  </script>
+</body>
+</html>
