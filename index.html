@@ -12,14 +12,48 @@
   <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
   <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
   <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+
+  <style>
+    @keyframes floatSlow {
+      0%, 100% { transform: translateY(0px) rotate(0deg); }
+      50% { transform: translateY(-9px) rotate(5deg); }
+    }
+    @keyframes floatReverse {
+      0%, 100% { transform: translateY(0px) rotate(0deg); }
+      50% { transform: translateY(8px) rotate(-5deg); }
+    }
+    @keyframes popIn {
+      0% { opacity: 0; transform: scale(0.85) translateY(12px); }
+      100% { opacity: 1; transform: scale(1) translateY(0); }
+    }
+    @keyframes shimmerGlow {
+      0%, 100% { box-shadow: 0 0 12px rgba(251, 191, 36, 0.45); }
+      50% { box-shadow: 0 0 24px rgba(251, 191, 36, 0.85); }
+    }
+    .animate-float { animation: floatSlow 3.6s ease-in-out infinite; }
+    .animate-float-rev { animation: floatReverse 4.2s ease-in-out infinite; }
+    .animate-pop { animation: popIn 0.35s cubic-bezier(0.16, 1, 0.3, 1) forwards; }
+    .star-glow { animation: shimmerGlow 2.2s ease-in-out infinite; }
+
+    /* Festive Illustrated Grocery & Star Background Pattern */
+    .festive-bg {
+      background-color: #fffbeb;
+      background-image:
+        radial-gradient(at 10% 15%, rgba(251, 191, 36, 0.28) 0px, transparent 48%),
+        radial-gradient(at 90% 12%, rgba(16, 185, 129, 0.24) 0px, transparent 46%),
+        radial-gradient(at 85% 82%, rgba(249, 115, 22, 0.20) 0px, transparent 50%),
+        radial-gradient(at 12% 88%, rgba(20, 184, 166, 0.24) 0px, transparent 48%),
+        url("data:image/svg+xml,%3Csvg width='80' height='80' viewBox='0 0 80 80' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' fill-rule='evenodd'%3E%3Cg fill='%23059669' fill-opacity='0.06'%3E%3Cpath d='M40 14l4.5 9.2 10.1 1.5-7.3 7.1 1.7 10.1L40 37.1l-9 4.8 1.7-10.1-7.3-7.1 10.1-1.5L40 14zm0 44a6 6 0 1 1 0 12 6 6 0 0 1 0-12zM14 54l3 6 6.6 1-4.8 4.6 1.1 6.6L14 69l-5.9 3.2 1.1-6.6-4.8-4.6 6.6-1 3-6zm52 0l3 6 6.6 1-4.8 4.6 1.1 6.6L66 69l-5.9 3.2 1.1-6.6-4.8-4.6 6.6-1 3-6z'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E");
+    }
+  </style>
 </head>
-<body class="bg-slate-50 text-slate-900 font-sans">
+<body class="festive-bg text-slate-900 font-sans min-h-screen relative overflow-x-hidden">
   <div id="root"></div>
 
   <script type="text/babel" data-type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
     import {
-      getFirestore, doc, getDoc, setDoc, updateDoc,
+      getFirestore, doc, getDoc, setDoc, updateDoc, deleteDoc,
       collection, addDoc, query, where,
       onSnapshot, serverTimestamp, increment, getDocs
     } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
@@ -45,11 +79,15 @@
     // 2. STORE SETTINGS
     // ==========================================
     const STORE_NAME = "KHANDELWAL FOOD MART";
+    const SITE_URL = "https://lakshya9449.github.io/kfm-loyalty/";
+    const GOOGLE_REVIEW_URL = "https://maps.app.goo.gl/iGBTXhCznfrmEtUz9";
     const MIN_BILL_AMOUNT = 1000;
     const STARS_FOR_REWARD = 5;
     const ADMIN_PIN = "8052"; // Owner Password
+    const INACTIVE_DAYS_LIMIT = 15;
+    const REMINDER_DAYS_CYCLE = 7;
 
-    // Image Compressor (Photo ko ~120KB ka banata hai taaki DB full na ho)
+    // Image Compressor
     const compressBillImage = (file) => {
       return new Promise((resolve, reject) => {
         const reader = new FileReader();
@@ -72,6 +110,79 @@
         reader.onerror = reject;
       });
     };
+
+    // Helper: Timestamp to milliseconds
+    const toMillisSafe = (ts) => {
+      if (!ts) return null;
+      if (ts.toMillis) return ts.toMillis();
+      if (ts.seconds) return ts.seconds * 1000;
+      return null;
+    };
+
+    // Helper: Days since timestamp
+    const getDaysSince = (ts) => {
+      const ms = toMillisSafe(ts);
+      if (!ms) return null;
+      return Math.floor((Date.now() - ms) / (1000 * 60 * 60 * 24));
+    };
+
+    // Helper: Check if 7-day reminder is due
+    const getReminderStatus = (cust) => {
+      const lastActMs = toMillisSafe(cust.lastActivityAt) || 0;
+      const lastRemMs = toMillisSafe(cust.lastReminderAt) || 0;
+      const latestTouchMs = Math.max(lastActMs, lastRemMs);
+
+      if (!latestTouchMs) {
+        return { due: true, daysSince: null, nextInDays: 0 };
+      }
+
+      const daysPassed = Math.floor((Date.now() - latestTouchMs) / (1000 * 60 * 60 * 24));
+      return {
+        due: daysPassed >= REMINDER_DAYS_CYCLE,
+        daysSince: daysPassed,
+        nextInDays: Math.max(0, REMINDER_DAYS_CYCLE - daysPassed)
+      };
+    };
+
+    // ==========================================
+    // DECORATIVE FLOATING BACKGROUND THEME (CUSTOMER SIDE)
+    // ==========================================
+    function FestiveBackgroundDecor() {
+      return (
+        <div className="fixed inset-0 pointer-events-none overflow-hidden z-0 select-none" aria-hidden="true">
+          {/* Glowing Ambient Orbs */}
+          <div className="absolute -top-20 -left-20 w-72 h-72 rounded-full bg-amber-300/25 blur-3xl" />
+          <div className="absolute top-1/4 -right-24 w-80 h-80 rounded-full bg-emerald-300/25 blur-3xl" />
+          <div className="absolute bottom-10 -left-16 w-72 h-72 rounded-full bg-orange-300/20 blur-3xl" />
+          <div className="absolute -bottom-20 right-4 w-72 h-72 rounded-full bg-teal-300/25 blur-3xl" />
+
+          {/* Floating Illustrated Grocery, Gift & Star Badges */}
+          <div className="absolute top-20 left-3 sm:left-10 w-12 h-12 rounded-2xl bg-white/75 backdrop-blur-sm shadow-sm border border-amber-200/70 flex items-center justify-center text-2xl animate-float opacity-80">
+            🧺
+          </div>
+          <div className="absolute top-28 right-3 sm:right-12 w-11 h-11 rounded-full bg-white/75 backdrop-blur-sm shadow-sm border border-emerald-200/70 flex items-center justify-center text-xl animate-float-rev opacity-80">
+            ⭐
+          </div>
+          <div className="absolute top-[46%] left-2 sm:left-8 w-11 h-11 rounded-2xl bg-white/75 backdrop-blur-sm shadow-sm border border-orange-200/70 flex items-center justify-center text-xl animate-float-rev opacity-75">
+            🎁
+          </div>
+          <div className="absolute top-[54%] right-2 sm:right-10 w-12 h-12 rounded-2xl bg-white/75 backdrop-blur-sm shadow-sm border border-amber-200/70 flex items-center justify-center text-2xl animate-float opacity-75">
+            🛍️
+          </div>
+          <div className="absolute bottom-24 left-5 sm:left-14 w-10 h-10 rounded-full bg-white/75 backdrop-blur-sm shadow-sm border border-teal-200/70 flex items-center justify-center text-lg animate-float opacity-75">
+            🎊
+          </div>
+          <div className="absolute bottom-16 right-5 sm:right-14 w-11 h-11 rounded-2xl bg-white/75 backdrop-blur-sm shadow-sm border border-amber-200/70 flex items-center justify-center text-xl animate-float-rev opacity-80">
+            ✨
+          </div>
+
+          {/* Subtle Golden Stars Scattered */}
+          <span className="absolute top-44 left-1/4 text-amber-400/40 text-lg animate-pulse">✦</span>
+          <span className="absolute top-72 right-1/4 text-emerald-500/35 text-xl animate-pulse">✦</span>
+          <span className="absolute bottom-40 left-1/3 text-orange-400/40 text-lg animate-pulse">✦</span>
+        </div>
+      );
+    }
 
     // ==========================================
     // MAIN APP
@@ -99,23 +210,32 @@
       };
 
       return (
-        <div className="min-h-screen pb-16">
-          <header className="bg-emerald-700 text-white px-4 py-3.5 shadow-md flex items-center justify-between sticky top-0 z-30 select-none">
-            <div onClick={handleTitleTap} className="cursor-pointer">
-              <h1 className="font-bold text-lg tracking-wide">{STORE_NAME}</h1>
-              <p className="text-xs text-emerald-100">Scan & Earn Star Loyalty</p>
+        <div className="min-h-screen pb-16 relative">
+          {mode === "customer" && <FestiveBackgroundDecor />}
+
+          <header className="bg-gradient-to-r from-emerald-700 via-teal-700 to-emerald-800 text-white px-4 py-3.5 shadow-lg flex items-center justify-between sticky top-0 z-30 select-none border-b border-amber-300/30">
+            <div onClick={handleTitleTap} className="cursor-pointer flex items-center gap-2.5">
+              <div className="w-9 h-9 rounded-xl bg-amber-400 text-slate-900 flex items-center justify-center text-xl shadow-md">
+                ⭐
+              </div>
+              <div>
+                <h1 className="font-extrabold text-base sm:text-lg tracking-wide leading-tight">{STORE_NAME}</h1>
+                <p className="text-[11px] text-amber-200 font-semibold tracking-wider uppercase">
+                  ✨ Scan & Earn Star Club
+                </p>
+              </div>
             </div>
             {mode === "admin" && (
               <button
                 onClick={() => setMode("customer")}
-                className="text-xs bg-emerald-800 hover:bg-emerald-900 px-3 py-1.5 rounded-full border border-emerald-600 font-medium"
+                className="text-xs bg-emerald-900/80 hover:bg-emerald-950 px-3 py-1.5 rounded-full border border-emerald-500 font-medium"
               >
                 ← Customer View
               </button>
             )}
           </header>
 
-          <main className="max-w-xl mx-auto p-4">
+          <main className="max-w-xl mx-auto p-4 relative z-10">
             {mode === "customer" ? <CustomerPortal /> : <AdminPortal />}
           </main>
         </div>
@@ -123,7 +243,7 @@
     }
 
     // ==========================================
-    // CUSTOMER PORTAL (QR SCAN VIEW)
+    // CUSTOMER PORTAL (JOYFUL, COLOURFUL & POPUP-DRIVEN)
     // ==========================================
     function CustomerPortal() {
       const [phone, setPhone] = useState(() => localStorage.getItem("kfm_phone") || "");
@@ -138,6 +258,10 @@
       const [uploading, setUploading] = useState(false);
       const [msg, setMsg] = useState(null);
       const [myBills, setMyBills] = useState([]);
+
+      // Joyful Attention Popups
+      const [activePopup, setActivePopup] = useState(null);
+      const shownEventsRef = useRef(new Set());
 
       useEffect(() => {
         if (phone.length === 10) loadCustomer(phone);
@@ -159,7 +283,28 @@
           setIsNewUser(false);
 
           onSnapshot(custRef, (d) => {
-            if (d.exists()) setCustomer(d.data());
+            if (d.exists()) {
+              const data = d.data();
+              setCustomer(data);
+
+              const rewardKey = `reward_unlocked_${cleanPhone}_${data.stars}_${data.rewardsEarned || 0}`;
+              if (
+                data.stars >= STARS_FOR_REWARD &&
+                !localStorage.getItem(rewardKey) &&
+                !shownEventsRef.current.has(rewardKey)
+              ) {
+                shownEventsRef.current.add(rewardKey);
+                localStorage.setItem(rewardKey, "1");
+                setActivePopup({
+                  type: "reward_complete",
+                  name: data.name,
+                  stars: data.stars
+                });
+              }
+            } else {
+              localStorage.removeItem("kfm_phone");
+              setCustomer(null);
+            }
           });
 
           const q = query(collection(db, "bill_submissions"), where("phone", "==", cleanPhone));
@@ -168,6 +313,25 @@
             qSnap.forEach((d) => list.push({ id: d.id, ...d.data() }));
             list.sort((a, b) => (b.createdAt?.seconds || 0) - (a.createdAt?.seconds || 0));
             setMyBills(list);
+
+            const latestApproved = list.find((b) => b.status === "approved");
+            if (latestApproved) {
+              const seenKey = `kfm_seen_approved_${latestApproved.id}`;
+              if (!localStorage.getItem(seenKey) && !shownEventsRef.current.has(seenKey)) {
+                shownEventsRef.current.add(seenKey);
+                localStorage.setItem(seenKey, "1");
+                const awarded = latestApproved.starsAwarded || 1;
+                setActivePopup((prev) =>
+                  prev?.type === "reward_complete"
+                    ? prev
+                    : {
+                        type: "star_approved",
+                        billNumber: latestApproved.billNumber,
+                        starsAwarded: awarded
+                      }
+                );
+              }
+            }
           });
         } catch (err) {
           alert("Firebase error: Firestore Rules check karein.");
@@ -188,7 +352,8 @@
             name: name.trim(),
             stars: 0,
             totalApprovedBills: 0,
-            rewardsEarned: 0
+            rewardsEarned: 0,
+            lastActivityAt: serverTimestamp()
           });
           await loadCustomer(cleanPhone);
         } else {
@@ -209,32 +374,40 @@
         const cleanBillNo = billNumber.trim().toUpperCase();
         const amt = claimedAmount ? Number(claimedAmount) : 0;
 
+        if (!cleanBillNo) {
+          return setMsg({ type: "err", text: "Invoice / Bill Number likhna zaroori hai." });
+        }
         if (claimedAmount && amt < MIN_BILL_AMOUNT) {
           return setMsg({ type: "err", text: `Star sirf ₹${MIN_BILL_AMOUNT}+ ke bill par milta hai.` });
         }
-        if (!previewImage) return setMsg({ type: "err", text: "Bill ki clear photo upload karein." });
+        if (!previewImage) {
+          return setMsg({ type: "err", text: "Bill ki clear photo upload karein." });
+        }
 
         setUploading(true);
         setMsg(null);
 
         try {
-          if (cleanBillNo) {
-            const dupQ = query(collection(db, "bill_submissions"), where("billNumber", "==", cleanBillNo));
-            const dupSnap = await getDocs(dupQ);
-            if (dupSnap.docs.some((d) => d.data().status !== "rejected")) {
-              setUploading(false);
-              return setMsg({ type: "err", text: `Bill #${cleanBillNo} pehle hi upload ho chuka hai.` });
-            }
+          const dupQ = query(collection(db, "bill_submissions"), where("billNumber", "==", cleanBillNo));
+          const dupSnap = await getDocs(dupQ);
+          if (dupSnap.docs.some((d) => d.data().status !== "rejected")) {
+            setUploading(false);
+            return setMsg({ type: "err", text: `Invoice #${cleanBillNo} pehle hi upload ho chuka hai.` });
           }
 
           await addDoc(collection(db, "bill_submissions"), {
             phone: customer.phone,
             customerName: customer.name,
-            billNumber: cleanBillNo || "PHOTO-BILL",
+            billNumber: cleanBillNo,
             claimedAmount: amt,
             imageBase64: previewImage,
             status: "pending",
+            starsAwarded: 0,
             createdAt: serverTimestamp()
+          });
+
+          await updateDoc(doc(db, "customers", customer.phone), {
+            lastActivityAt: serverTimestamp()
           });
 
           setBillNumber("");
@@ -244,77 +417,215 @@
             type: "ok",
             text: "✅ Bill upload ho gaya! Verification ke baad Star add ho jayega."
           });
+
+          setActivePopup({
+            type: "upload_success",
+            billNumber: cleanBillNo
+          });
         } catch (err) {
           setMsg({ type: "err", text: "Upload fail hua. Internet ya Firestore Rules check karein." });
         }
         setUploading(false);
       };
 
+      // ==========================================
+      // JOYFUL WELCOME & LOGIN VIEW
+      // ==========================================
       if (!customer) {
         return (
-          <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-6 mt-4">
-            <div className="text-center mb-6">
-              <div className="text-4xl mb-2">⭐</div>
-              <h2 className="text-xl font-bold text-slate-800">Apna Digital Star Card Dekhein</h2>
-              <p className="text-sm text-slate-500 mt-1">
-                Har ₹{MIN_BILL_AMOUNT}+ ki shopping par 1 Star. {STARS_FOR_REWARD} Stars = Free Reward!
+          <div className="space-y-4 mt-2">
+            {/* Hero Welcome Card */}
+            <div className="bg-gradient-to-br from-emerald-700 via-teal-600 to-amber-500 text-white rounded-3xl p-6 shadow-xl relative overflow-hidden">
+              <div className="absolute -right-5 -top-5 text-7xl opacity-25 select-none animate-float">🎁</div>
+              <div className="absolute right-12 bottom-2 text-4xl opacity-20 select-none animate-float-rev">🛒</div>
+              <span className="inline-block bg-white/20 backdrop-blur-sm text-amber-200 text-[11px] font-bold px-3 py-1 rounded-full uppercase tracking-wider mb-2">
+                🎉 Free Gifts & Special Offers
+              </span>
+              <h2 className="text-2xl font-extrabold leading-snug">
+                Har ₹{MIN_BILL_AMOUNT}+ Shopping Par Payein <span className="text-amber-300">Golden Star! ⭐</span>
+              </h2>
+              <p className="text-xs text-emerald-50 mt-1.5">
+                Bas <strong>{STARS_FOR_REWARD} Stars</strong> poore karein aur jeetein exciting Gifts & Offers!
               </p>
+
+              {/* Visual 3-Step Strip */}
+              <div className="grid grid-cols-3 gap-2 mt-4">
+                <div className="bg-white/15 backdrop-blur-sm rounded-2xl p-2.5 text-center border border-white/20">
+                  <div className="text-xl">🛍️</div>
+                  <p className="text-[11px] font-bold mt-1">1. Shop ₹{MIN_BILL_AMOUNT}+</p>
+                </div>
+                <div className="bg-white/15 backdrop-blur-sm rounded-2xl p-2.5 text-center border border-white/20">
+                  <div className="text-xl">📸</div>
+                  <p className="text-[11px] font-bold mt-1">2. Upload Bill</p>
+                </div>
+                <div className="bg-white/15 backdrop-blur-sm rounded-2xl p-2.5 text-center border border-white/20">
+                  <div className="text-xl">🎁</div>
+                  <p className="text-[11px] font-bold mt-1">3. Win Gifts!</p>
+                </div>
+              </div>
             </div>
 
-            <form onSubmit={handleLogin} className="space-y-4">
-              <div>
-                <label className="block text-xs font-bold text-slate-600 uppercase mb-1">
-                  Mobile Number
-                </label>
-                <input
-                  type="tel"
-                  maxLength={10}
-                  placeholder="10-digit mobile number"
-                  value={phone}
-                  onChange={(e) => setPhone(e.target.value.replace(/\D/g, ""))}
-                  className="w-full px-4 py-3 border border-slate-300 rounded-xl text-lg tracking-wider outline-none focus:ring-2 focus:ring-emerald-500"
-                  required
-                />
-              </div>
+            {/* Login Form Card (Frosted Glass over Festive Background) */}
+            <div className="bg-white/90 backdrop-blur-md rounded-3xl shadow-lg border border-white p-6">
+              <h3 className="text-lg font-extrabold text-slate-800 text-center">
+                Apna Star Card Kholne Ke Liye Number Dalein
+              </h3>
 
-              {isNewUser && (
+              <form onSubmit={handleLogin} className="space-y-4 mt-4">
                 <div>
                   <label className="block text-xs font-bold text-slate-600 uppercase mb-1">
-                    Aapka Naam (New Registration)
+                    📱 Mobile Number
                   </label>
                   <input
-                    type="text"
-                    placeholder="Apna shubh naam likhein"
-                    value={name}
-                    onChange={(e) => setName(e.target.value)}
-                    className="w-full px-4 py-3 border border-slate-300 rounded-xl outline-none focus:ring-2 focus:ring-emerald-500"
+                    type="tel"
+                    maxLength={10}
+                    placeholder="10-digit mobile number"
+                    value={phone}
+                    onChange={(e) => setPhone(e.target.value.replace(/\D/g, ""))}
+                    className="w-full px-4 py-3.5 bg-white border-2 border-emerald-200 rounded-2xl text-lg font-semibold tracking-wider outline-none focus:border-emerald-500 focus:ring-4 focus:ring-emerald-500/15"
                     required
                   />
                 </div>
-              )}
 
-              <button
-                type="submit"
-                disabled={loading}
-                className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-3 rounded-xl shadow"
-              >
-                {loading ? "Checking..." : isNewUser ? "Card Banayein" : "Aage Badhein →"}
-              </button>
-            </form>
+                {isNewUser && (
+                  <div className="animate-pop bg-amber-50 p-3.5 rounded-2xl border border-amber-200">
+                    <label className="block text-xs font-bold text-amber-900 uppercase mb-1">
+                      ✨ Swagat Hai! Apna Shubh Naam Likhein
+                    </label>
+                    <input
+                      type="text"
+                      placeholder="Apna naam likhein"
+                      value={name}
+                      onChange={(e) => setName(e.target.value)}
+                      className="w-full px-4 py-3 bg-white border border-amber-300 rounded-xl outline-none focus:ring-2 focus:ring-amber-500"
+                      required
+                    />
+                  </div>
+                )}
+
+                <button
+                  type="submit"
+                  disabled={loading}
+                  className="w-full bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white font-extrabold text-base py-3.5 rounded-2xl shadow-lg shadow-emerald-600/25 transition active:scale-[0.99]"
+                >
+                  {loading ? "Checking..." : isNewUser ? "🎉 Mera Star Card Banayein" : "Apna Card Dekhein →"}
+                </button>
+              </form>
+            </div>
           </div>
         );
       }
 
+      // ==========================================
+      // LOGGED-IN JOYFUL DASHBOARD
+      // ==========================================
       const rewardReady = customer.stars >= STARS_FOR_REWARD;
+      const progressPct = Math.min(100, Math.round(((customer.stars || 0) / STARS_FOR_REWARD) * 100));
+      const pendingCount = myBills.filter((b) => b.status === "pending").length;
 
       return (
-        <div className="space-y-5 mt-2">
-          {/* Star Card */}
-          <div className="bg-gradient-to-br from-emerald-800 to-teal-700 text-white rounded-2xl p-5 shadow-lg">
-            <div className="flex justify-between items-start">
+        <div className="space-y-5 mt-1">
+          {/* POPUP MODAL FOR IMPORTANT UPDATES */}
+          {activePopup && (
+            <div
+              onClick={() => setActivePopup(null)}
+              className="fixed inset-0 bg-slate-900/70 backdrop-blur-sm z-50 flex items-center justify-center p-4"
+            >
+              <div
+                onClick={(e) => e.stopPropagation()}
+                className="bg-white rounded-3xl max-w-sm w-full p-6 text-center shadow-2xl border-2 border-amber-300 animate-pop relative overflow-hidden"
+              >
+                <div className="absolute -top-4 -left-4 text-5xl opacity-20 select-none">🎊</div>
+                <div className="absolute -bottom-4 -right-4 text-5xl opacity-20 select-none">✨</div>
+
+                {activePopup.type === "upload_success" && (
+                  <>
+                    <div className="w-16 h-16 mx-auto rounded-2xl bg-emerald-100 text-4xl flex items-center justify-center mb-3 animate-float">
+                      📸
+                    </div>
+                    <span className="inline-block bg-emerald-100 text-emerald-800 text-[11px] font-extrabold px-3 py-1 rounded-full uppercase">
+                      Invoice #{activePopup.billNumber} Submitted!
+                    </span>
+                    <h3 className="text-xl font-extrabold text-slate-800 mt-2">
+                      Bill Upload Ho Gaya! 🎉
+                    </h3>
+                    <p className="text-xs text-slate-600 mt-1.5 leading-relaxed">
+                      Verify hote hi aapka Star card mein jud jayega aur WhatsApp par update milega.
+                    </p>
+
+                    <div className="mt-4 bg-gradient-to-r from-amber-50 to-orange-50 border border-amber-200 rounded-2xl p-3.5">
+                      <p className="text-xs font-bold text-slate-800">
+                        {STORE_NAME} ki service pasand aayi?
+                      </p>
+                      <p className="text-[11px] text-slate-600 mt-0.5">
+                        Google par 5★ rating dekar humein support karein!
+                      </p>
+                      <a
+                        href={GOOGLE_REVIEW_URL}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="mt-2.5 w-full inline-flex items-center justify-center gap-1.5 bg-gradient-to-r from-amber-400 to-orange-400 hover:from-amber-500 hover:to-orange-500 text-slate-900 font-extrabold text-xs py-2.5 px-4 rounded-xl shadow"
+                      >
+                        ⭐ Rate Us 5 Stars on Google
+                      </a>
+                    </div>
+                  </>
+                )}
+
+                {activePopup.type === "star_approved" && (
+                  <>
+                    <div className="w-16 h-16 mx-auto rounded-2xl bg-amber-100 text-4xl flex items-center justify-center mb-3 animate-float">
+                      ⭐
+                    </div>
+                    <span className="inline-block bg-amber-100 text-amber-900 text-[11px] font-extrabold px-3 py-1 rounded-full uppercase">
+                      Verified & Approved!
+                    </span>
+                    <h3 className="text-xl font-extrabold text-slate-800 mt-2">
+                      Badhai Ho! +{activePopup.starsAwarded} {activePopup.starsAwarded > 1 ? "Stars" : "Star"} Mile! 🥳
+                    </h3>
+                    <p className="text-xs text-slate-600 mt-1.5 leading-relaxed">
+                      Aapka Invoice #{activePopup.billNumber} verify ho gaya hai. Aapke ab kul <strong>{customer.stars}/{STARS_FOR_REWARD} Stars</strong> ho gaye hain!
+                    </p>
+                  </>
+                )}
+
+                {activePopup.type === "reward_complete" && (
+                  <>
+                    <div className="w-16 h-16 mx-auto rounded-2xl bg-amber-100 text-4xl flex items-center justify-center mb-3 animate-float">
+                      🎁
+                    </div>
+                    <span className="inline-block bg-amber-400 text-slate-900 text-[11px] font-extrabold px-3 py-1 rounded-full uppercase">
+                      🏆 5/5 Stars Completed!
+                    </span>
+                    <h3 className="text-xl font-extrabold text-slate-800 mt-2">
+                      Aapka Reward Unlock Ho Gaya! 🎉
+                    </h3>
+                    <p className="text-xs text-slate-600 mt-1.5 leading-relaxed">
+                      Shandar {activePopup.name} ji! Offers and Gifts will be updated to you on WhatsApp soon!
+                    </p>
+                  </>
+                )}
+
+                <button
+                  onClick={() => setActivePopup(null)}
+                  className="mt-4 w-full bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs py-3 rounded-xl"
+                >
+                  Awesome! Continue →
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* VIBRANT STAR CARD */}
+          <div className="bg-gradient-to-br from-emerald-800 via-teal-700 to-emerald-900 text-white rounded-3xl p-5 shadow-xl relative overflow-hidden border border-emerald-500/30">
+            <div className="absolute -right-6 -top-6 text-8xl opacity-10 select-none">⭐</div>
+
+            <div className="flex justify-between items-start relative z-10">
               <div>
-                <p className="text-xs uppercase tracking-wider text-emerald-200">Loyalty Member</p>
-                <h2 className="text-xl font-bold">{customer.name}</h2>
+                <span className="inline-flex items-center gap-1 bg-amber-400/20 text-amber-300 text-[10px] font-extrabold uppercase tracking-wider px-2.5 py-0.5 rounded-full border border-amber-300/30">
+                  ✨ VIP Loyalty Member
+                </span>
+                <h2 className="text-xl font-extrabold mt-1">{customer.name}</h2>
                 <p className="text-xs text-emerald-100">+91 {customer.phone}</p>
               </div>
               <button
@@ -323,103 +634,175 @@
                   setCustomer(null);
                   setPhone("");
                 }}
-                className="text-xs bg-white/15 px-2.5 py-1 rounded-lg"
+                className="text-xs bg-white/15 hover:bg-white/25 px-3 py-1.5 rounded-xl font-semibold backdrop-blur-sm"
               >
                 Change
               </button>
             </div>
 
-            <div className="my-5 bg-black/20 rounded-xl p-4">
-              <div className="flex justify-between text-xs mb-3">
-                <span className="text-emerald-100">Aapke Stars</span>
-                <span className="font-bold text-amber-300">
-                  {customer.stars} / {STARS_FOR_REWARD} Stars
+            {/* Interactive Star Slots + Progress Bar */}
+            <div className="my-4 bg-black/25 backdrop-blur-sm rounded-2xl p-4 border border-white/10">
+              <div className="flex justify-between items-center text-xs mb-2">
+                <span className="text-emerald-100 font-semibold">Aapke Golden Stars</span>
+                <span className="font-extrabold text-amber-300 bg-amber-400/15 px-2.5 py-0.5 rounded-full">
+                  {customer.stars} / {STARS_FOR_REWARD} Stars ({progressPct}%)
                 </span>
               </div>
+
+              {/* Animated Progress Track */}
+              <div className="w-full h-2 bg-white/15 rounded-full overflow-hidden mb-3.5">
+                <div
+                  className="h-full bg-gradient-to-r from-amber-300 via-yellow-400 to-orange-400 rounded-full transition-all duration-700"
+                  style={{ width: `${progressPct}%` }}
+                />
+              </div>
+
               <div className="grid grid-cols-5 gap-2">
                 {Array.from({ length: STARS_FOR_REWARD }).map((_, i) => {
                   const filled = i < customer.stars;
+                  const isFinalGift = i === STARS_FOR_REWARD - 1;
                   return (
                     <div
                       key={i}
-                      className={`aspect-square rounded-xl flex items-center justify-center text-2xl border ${
+                      className={`aspect-square rounded-2xl flex flex-col items-center justify-center border-2 transition-all ${
                         filled
-                          ? "bg-amber-400 border-amber-300 shadow"
-                          : "bg-white/10 border-white/20 opacity-40"
+                          ? "bg-gradient-to-br from-amber-300 to-amber-500 border-yellow-200 star-glow scale-[1.03]"
+                          : "bg-white/10 border-dashed border-white/25"
                       }`}
                     >
-                      ⭐
+                      <span className={`text-2xl ${filled ? "" : "opacity-55"}`}>
+                        {filled ? "⭐" : isFinalGift ? "🎁" : "☆"}
+                      </span>
+                      <span className={`text-[9px] font-extrabold mt-0.5 ${filled ? "text-slate-900" : "text-emerald-200/70"}`}>
+                        {isFinalGift ? "GIFT" : `#${i + 1}`}
+                      </span>
                     </div>
                   );
                 })}
               </div>
             </div>
 
-            <div className="bg-white/10 rounded-xl p-3 text-xs">
+            {/* Status Banner */}
+            <div className="bg-gradient-to-r from-amber-400/20 to-emerald-400/20 border border-amber-300/30 rounded-2xl p-3 text-xs flex items-center gap-2.5">
+              <span className="text-xl shrink-0">{rewardReady ? "🎉" : "🎁"}</span>
               {rewardReady ? (
-                <p className="font-bold text-amber-300 text-sm">
-                  🎉 Badhai ho! Aapka Card complete ho gaya hai! Offers and Gifts will be updated to you on WhatsApp.
+                <p className="font-bold text-amber-200">
+                  Badhai ho! Aapka Card complete ho gaya hai! Offers and Gifts will be updated to you on WhatsApp.
                 </p>
               ) : (
-                <p className="text-emerald-50 font-medium">
+                <p className="text-white font-medium">
                   Offers and Gifts will be updated to you on WhatsApp once you complete the Card
                 </p>
               )}
             </div>
           </div>
 
-          {/* Upload Bill Form */}
-          <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-5">
-            <h3 className="font-bold text-slate-800">📸 Naya Bill Upload Karein (₹{MIN_BILL_AMOUNT}+)</h3>
-            <p className="text-xs text-slate-500 mt-1">
-              Bill ki photo upload karein. Verify hote hi Star jud jayega.
-            </p>
+          {/* Pending Bill Live Alert Pill */}
+          {pendingCount > 0 && (
+            <div className="bg-amber-100/95 backdrop-blur-sm border border-amber-300 text-amber-900 rounded-2xl px-4 py-3 flex items-center justify-between text-xs shadow-sm">
+              <div className="flex items-center gap-2">
+                <span className="text-lg">⏳</span>
+                <p className="font-bold">
+                  Aapke {pendingCount} {pendingCount > 1 ? "bills" : "bill"} verification mein hain!
+                </p>
+              </div>
+              <span className="bg-amber-500 text-white font-extrabold px-2.5 py-0.5 rounded-full text-[10px] uppercase">
+                In Review
+              </span>
+            </div>
+          )}
+
+          {/* JOYFUL BILL UPLOAD CARD (Frosted Glass) */}
+          <div className="bg-white/90 backdrop-blur-md rounded-3xl shadow-lg border border-white p-5">
+            <div className="flex items-center gap-2.5">
+              <div className="w-10 h-10 rounded-2xl bg-gradient-to-br from-amber-400 to-orange-400 text-slate-900 flex items-center justify-center text-xl shadow-sm">
+                📸
+              </div>
+              <div>
+                <h3 className="font-extrabold text-slate-800 text-base">
+                  Naya Bill Upload Karein (₹{MIN_BILL_AMOUNT}+)
+                </h3>
+                <p className="text-xs text-slate-500">
+                  Bill ki photo upload karein. Verify hote hi Star jud jayega.
+                </p>
+              </div>
+            </div>
 
             {msg && (
               <div
-                className={`mt-3 p-3 rounded-xl text-xs ${
+                className={`mt-3.5 p-3.5 rounded-2xl text-xs ${
                   msg.type === "ok"
                     ? "bg-emerald-50 text-emerald-800 border border-emerald-200"
                     : "bg-red-50 text-red-700 border border-red-200"
                 }`}
               >
-                {msg.text}
+                <p className="font-bold">{msg.text}</p>
+
+                {msg.type === "ok" && (
+                  <div className="mt-2.5 pt-2.5 border-t border-emerald-200/80 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                    <p className="text-[11px] text-slate-700">
+                      Service pasand aayi? Google par <strong>5★</strong> dekar support karein!
+                    </p>
+                    <a
+                      href={GOOGLE_REVIEW_URL}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="shrink-0 inline-flex items-center justify-center gap-1 bg-amber-400 hover:bg-amber-500 text-slate-900 font-extrabold text-xs px-3 py-1.5 rounded-xl shadow-sm"
+                    >
+                      ⭐ Rate Us on Google
+                    </a>
+                  </div>
+                )}
               </div>
             )}
 
-            <form onSubmit={handleBillSubmit} className="space-y-3 mt-4">
+            <form onSubmit={handleBillSubmit} className="space-y-3.5 mt-4">
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-xs font-bold text-slate-600 mb-1">Bill Number (Optional)</label>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">
+                    Invoice Number <span className="text-red-500">*</span>
+                  </label>
                   <input
                     type="text"
                     placeholder="e.g. 1042"
                     value={billNumber}
                     onChange={(e) => setBillNumber(e.target.value)}
-                    className="w-full px-3 py-2 border border-slate-300 rounded-xl text-sm uppercase"
+                    className="w-full px-3.5 py-2.5 bg-white border-2 border-slate-200 rounded-2xl text-sm font-semibold uppercase outline-none focus:border-emerald-500"
+                    required
                   />
                 </div>
                 <div>
-                  <label className="block text-xs font-bold text-slate-600 mb-1">Total Amount (Optional)</label>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">Total Amount (Optional)</label>
                   <input
                     type="number"
                     placeholder="1000+"
                     value={claimedAmount}
                     onChange={(e) => setClaimedAmount(e.target.value)}
-                    className="w-full px-3 py-2 border border-slate-300 rounded-xl text-sm"
+                    className="w-full px-3.5 py-2.5 bg-white border-2 border-slate-200 rounded-2xl text-sm font-semibold outline-none focus:border-emerald-500"
                   />
                 </div>
               </div>
 
               <div>
-                <label className="block text-xs font-bold text-slate-600 mb-1">Bill Ki Photo *</label>
-                <label className="border-2 border-dashed border-slate-300 rounded-xl p-4 flex flex-col items-center justify-center cursor-pointer bg-slate-50">
+                <label className="block text-xs font-bold text-slate-700 mb-1">
+                  Bill Ki Photo <span className="text-red-500">*</span>
+                </label>
+                <label className="border-2 border-dashed border-emerald-300 hover:border-emerald-500 rounded-2xl p-4 flex flex-col items-center justify-center cursor-pointer bg-gradient-to-b from-emerald-50/70 to-amber-50/50 transition">
                   {previewImage ? (
-                    <img src={previewImage} className="max-h-48 rounded-lg" />
+                    <div className="text-center">
+                      <img src={previewImage} className="max-h-48 rounded-xl shadow" />
+                      <span className="inline-block mt-2 text-[11px] font-bold text-emerald-700">
+                        🔄 Photo Badalne Ke Liye Tap Karein
+                      </span>
+                    </div>
                   ) : (
-                    <span className="text-xs font-semibold text-emerald-700 py-4">
-                      📷 Camera Kholne / Photo Chunne ke liye Tap Karein
-                    </span>
+                    <div className="text-center py-3">
+                      <div className="text-3xl mb-1">📷</div>
+                      <span className="text-xs font-extrabold text-emerald-800 block">
+                        Camera Kholne / Bill Photo Chunne Ke Liye Tap Karein
+                      </span>
+                      <span className="text-[11px] text-slate-500">Clear bill photo upload karein</span>
+                    </div>
                   )}
                   <input type="file" accept="image/*" capture="environment" onChange={handleFile} className="hidden" />
                 </label>
@@ -428,42 +811,60 @@
               <button
                 type="submit"
                 disabled={uploading}
-                className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-3 rounded-xl shadow"
+                className="w-full bg-gradient-to-r from-emerald-600 via-teal-600 to-emerald-600 hover:from-emerald-700 hover:to-teal-700 text-white font-extrabold py-3.5 rounded-2xl shadow-lg shadow-emerald-600/25 transition active:scale-[0.99]"
               >
-                {uploading ? "Uploading..." : "Submit Bill for Star"}
+                {uploading ? "Uploading Bill..." : "✨ Submit Bill & Claim Star ⭐"}
               </button>
             </form>
           </div>
 
-          {/* Customer Bill History */}
+          {/* CUSTOMER BILL HISTORY (Frosted Glass) */}
           {myBills.length > 0 && (
-            <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-5">
-              <h3 className="font-bold text-slate-800 text-sm mb-3">Aapke Uploaded Bills</h3>
-              <div className="space-y-2">
-                {myBills.map((b) => (
-                  <div key={b.id} className="flex items-center justify-between p-3 rounded-xl bg-slate-50 border">
-                    <div>
-                      <p className="text-sm font-bold">
-                        {b.billNumber && b.billNumber !== "PHOTO-BILL" ? `Bill #${b.billNumber}` : "Uploaded Bill"}
-                        {b.claimedAmount > 0 ? ` • ₹${b.claimedAmount}` : ""}
-                      </p>
-                      {b.status === "rejected" && b.rejectReason && (
-                        <p className="text-xs text-red-600">Reason: {b.rejectReason}</p>
-                      )}
-                    </div>
-                    <span
-                      className={`text-xs font-bold px-2.5 py-1 rounded-full ${
-                        b.status === "pending"
-                          ? "bg-amber-100 text-amber-800"
-                          : b.status === "approved"
-                          ? "bg-emerald-100 text-emerald-800"
-                          : "bg-red-100 text-red-800"
+            <div className="bg-white/90 backdrop-blur-md rounded-3xl shadow-md border border-white p-5">
+              <h3 className="font-extrabold text-slate-800 text-sm mb-3 flex items-center gap-1.5">
+                🧾 Aapke Uploaded Bills ({myBills.length})
+              </h3>
+              <div className="space-y-2.5">
+                {myBills.map((b) => {
+                  const awarded = b.starsAwarded || 1;
+                  return (
+                    <div
+                      key={b.id}
+                      className={`flex items-center justify-between p-3.5 rounded-2xl border ${
+                        b.status === "approved"
+                          ? "bg-emerald-50/80 border-emerald-200"
+                          : b.status === "pending"
+                          ? "bg-amber-50/80 border-amber-200"
+                          : "bg-red-50/80 border-red-200"
                       }`}
                     >
-                      {b.status === "pending" ? "⏳ Pending" : b.status === "approved" ? "✅ +1 Star" : "❌ Rejected"}
-                    </span>
-                  </div>
-                ))}
+                      <div>
+                        <p className="text-sm font-extrabold text-slate-800">
+                          Invoice #{b.billNumber}
+                          {b.claimedAmount > 0 ? ` • ₹${b.claimedAmount}` : ""}
+                        </p>
+                        {b.status === "rejected" && b.rejectReason && (
+                          <p className="text-xs text-red-600 mt-0.5">Reason: {b.rejectReason}</p>
+                        )}
+                      </div>
+                      <span
+                        className={`text-xs font-extrabold px-3 py-1 rounded-full ${
+                          b.status === "pending"
+                            ? "bg-amber-200/80 text-amber-900"
+                            : b.status === "approved"
+                            ? "bg-emerald-600 text-white shadow-sm"
+                            : "bg-red-100 text-red-800"
+                        }`}
+                      >
+                        {b.status === "pending"
+                          ? "⏳ Pending"
+                          : b.status === "approved"
+                          ? `⭐ +${awarded} ${awarded > 1 ? "Stars" : "Star"}`
+                          : "❌ Rejected"}
+                      </span>
+                    </div>
+                  );
+                })}
               </div>
             </div>
           )}
@@ -472,14 +873,16 @@
     }
 
     // ==========================================
-    // ADMIN PORTAL (VERIFICATION)
+    // ADMIN PORTAL (OWNER TRIPLE-TAP VIEW - UNCHANGED)
     // ==========================================
     function AdminPortal() {
       const [unlocked, setUnlocked] = useState(false);
       const [pin, setPin] = useState("");
       const [tab, setTab] = useState("pending");
+      const [customerFilter, setCustomerFilter] = useState("all"); // all | reminder_7 | near_complete | inactive_15
       const [pendingBills, setPendingBills] = useState([]);
       const [customers, setCustomers] = useState([]);
+      const [starInputs, setStarInputs] = useState({});
       const [zoomImg, setZoomImg] = useState(null);
 
       useEffect(() => {
@@ -496,7 +899,7 @@
         const unsub2 = onSnapshot(collection(db, "customers"), (snap) => {
           const list = [];
           snap.forEach((d) => list.push(d.data()));
-          list.sort((a, b) => b.totalApprovedBills - a.totalApprovedBills);
+          list.sort((a, b) => (b.totalApprovedBills || 0) - (a.totalApprovedBills || 0));
           setCustomers(list);
         });
 
@@ -506,28 +909,46 @@
         };
       }, [unlocked]);
 
+      const getStarsForBill = (bill) => {
+        if (starInputs[bill.id] !== undefined) return Number(starInputs[bill.id]);
+        if (bill.claimedAmount >= 2000) return Math.floor(bill.claimedAmount / 1000);
+        return 1;
+      };
+
       const handleApprove = async (bill) => {
+        const starsToGive = getStarsForBill(bill);
+        if (!starsToGive || starsToGive < 1) {
+          return alert("Kam se kam 1 Star select karein.");
+        }
+
         const custRef = doc(db, "customers", bill.phone);
         const snap = await getDoc(custRef);
-        const newStars = (snap.exists() ? snap.data().stars || 0 : 0) + 1;
+        const newStars = (snap.exists() ? snap.data().stars || 0 : 0) + starsToGive;
 
         await updateDoc(custRef, {
           stars: newStars,
-          totalApprovedBills: increment(1)
+          totalApprovedBills: increment(1),
+          lastActivityAt: serverTimestamp()
         });
 
         await updateDoc(doc(db, "bill_submissions", bill.id), {
           status: "approved",
+          starsAwarded: starsToGive,
           imageBase64: ""
         });
 
-        if (window.confirm(`Approved! ${bill.customerName} ke ab ${newStars} Stars ho gaye.\nWhatsApp message bhejna hai?`)) {
-          const billTag = bill.billNumber && bill.billNumber !== "PHOTO-BILL" ? `Bill #${bill.billNumber}` : "bill";
-          const msg =
+        if (
+          window.confirm(
+            `Approved (+${starsToGive} ${starsToGive > 1 ? "Stars" : "Star"})!\n${bill.customerName} ke ab ${newStars} Stars ho gaye.\nWhatsApp message bhejna hai?`
+          )
+        ) {
+          const starLabel = `+${starsToGive} ${starsToGive > 1 ? "Stars" : "Star"}`;
+          const baseMsg =
             newStars >= STARS_FOR_REWARD
-              ? `Namaste ${bill.customerName} ji! ${STORE_NAME} mein aapka ${billTag} verify ho gaya hai aur aapke ${STARS_FOR_REWARD}/${STARS_FOR_REWARD} Stars poore ho gaye hain! Aapka special Offer/Gift ready hai—agli shopping par counter par claim karein.`
-              : `Namaste ${bill.customerName} ji! ${STORE_NAME} mein aapka ${billTag} verify ho gaya hai (+1 Star). Total Stars: ${newStars}/${STARS_FOR_REWARD}.`;
-          window.open(`https://wa.me/91${bill.phone}?text=${encodeURIComponent(msg)}`, "_blank");
+              ? `Namaste ${bill.customerName} ji! ${STORE_NAME} mein aapka Invoice #${bill.billNumber} verify ho gaya hai (${starLabel}) aur aapke ${STARS_FOR_REWARD}/${STARS_FOR_REWARD} Stars poore ho gaye hain! Aapka special Offer/Gift ready hai—agli shopping par counter par claim karein.`
+              : `Namaste ${bill.customerName} ji! ${STORE_NAME} mein aapka Invoice #${bill.billNumber} verify ho gaya hai (${starLabel}). Total Stars: ${newStars}/${STARS_FOR_REWARD}.`;
+          const fullMsg = `${baseMsg}\n\nTo view: ${SITE_URL}`;
+          window.open(`https://wa.me/91${bill.phone}?text=${encodeURIComponent(fullMsg)}`, "_blank");
         }
       };
 
@@ -544,9 +965,39 @@
       const handleRedeem = async (cust) => {
         if (!window.confirm(`${cust.name} ka reward redeem mark karein? (${STARS_FOR_REWARD} stars reset honge)`)) return;
         await updateDoc(doc(db, "customers", cust.phone), {
-          stars: cust.stars - STARS_FOR_REWARD,
-          rewardsEarned: increment(1)
+          stars: Math.max(0, cust.stars - STARS_FOR_REWARD),
+          rewardsEarned: increment(1),
+          lastActivityAt: serverTimestamp()
         });
+      };
+
+      const handleSendReminder = async (cust, waMsg) => {
+        window.open(`https://wa.me/91${cust.phone}?text=${encodeURIComponent(waMsg)}`, "_blank");
+        try {
+          await updateDoc(doc(db, "customers", cust.phone), {
+            lastReminderAt: serverTimestamp()
+          });
+        } catch (err) {
+          console.error("Reminder timestamp update failed:", err);
+        }
+      };
+
+      const handleRemoveCustomer = async (cust) => {
+        const ok = window.confirm(
+          `⚠️ Kya aap "${cust.name}" (+91 ${cust.phone}) ko permanently remove karna chahte hain?\nInka star card aur bill history delete ho jayegi.`
+        );
+        if (!ok) return;
+
+        try {
+          await deleteDoc(doc(db, "customers", cust.phone));
+          const q = query(collection(db, "bill_submissions"), where("phone", "==", cust.phone));
+          const snap = await getDocs(q);
+          for (const d of snap.docs) {
+            await deleteDoc(doc(db, "bill_submissions", d.id));
+          }
+        } catch (err) {
+          alert("Customer delete karne mein error aaya.");
+        }
       };
 
       if (!unlocked) {
@@ -576,6 +1027,35 @@
         );
       }
 
+      // Compute Filter Counts
+      const reminderDueCount = customers.filter((c) => getReminderStatus(c).due).length;
+      const inactiveCount = customers.filter((c) => {
+        const d = getDaysSince(c.lastActivityAt);
+        return d !== null && d >= INACTIVE_DAYS_LIMIT;
+      }).length;
+
+      const filteredCustomers = (() => {
+        if (customerFilter === "reminder_7") {
+          return [...customers]
+            .filter((c) => getReminderStatus(c).due)
+            .sort((a, b) => (getReminderStatus(b).daysSince || 999) - (getReminderStatus(a).daysSince || 999));
+        }
+        if (customerFilter === "near_complete") {
+          return [...customers]
+            .filter((c) => c.stars > 0 && c.stars < STARS_FOR_REWARD)
+            .sort((a, b) => b.stars - a.stars);
+        }
+        if (customerFilter === "inactive_15") {
+          return [...customers]
+            .filter((c) => {
+              const d = getDaysSince(c.lastActivityAt);
+              return d !== null && d >= INACTIVE_DAYS_LIMIT;
+            })
+            .sort((a, b) => getDaysSince(b.lastActivityAt) - getDaysSince(a.lastActivityAt));
+        }
+        return customers;
+      })();
+
       return (
         <div className="space-y-4 mt-2">
           <div className="grid grid-cols-2 gap-2 bg-slate-200 p-1 rounded-xl">
@@ -604,92 +1084,223 @@
                   <p className="font-bold text-slate-700">✅ Koi pending bill nahi hai!</p>
                 </div>
               ) : (
-                pendingBills.map((b) => (
-                  <div key={b.id} className="bg-white rounded-2xl shadow-sm border overflow-hidden">
-                    <div className="p-4 border-b flex justify-between">
-                      <div>
-                        <h3 className="font-bold">{b.customerName}</h3>
-                        <p className="text-xs text-slate-500">+91 {b.phone}</p>
-                      </div>
-                      <div className="text-right">
-                        {b.billNumber && b.billNumber !== "PHOTO-BILL" && (
-                          <span className="bg-amber-100 text-amber-900 font-bold text-xs px-2 py-1 rounded">
-                            Bill #{b.billNumber}
+                pendingBills.map((b) => {
+                  const selectedStars = getStarsForBill(b);
+                  return (
+                    <div key={b.id} className="bg-white rounded-2xl shadow-sm border overflow-hidden">
+                      <div className="p-4 border-b flex justify-between items-start">
+                        <div>
+                          <h3 className="font-bold">{b.customerName}</h3>
+                          <p className="text-xs text-slate-500">+91 {b.phone}</p>
+                        </div>
+                        <div className="text-right">
+                          <span className="bg-amber-100 text-amber-900 font-bold text-xs px-2.5 py-1 rounded">
+                            Invoice #{b.billNumber}
                           </span>
-                        )}
-                        {b.claimedAmount > 0 && (
-                          <p className="text-sm font-bold text-emerald-700 mt-1">₹{b.claimedAmount}</p>
-                        )}
+                          {b.claimedAmount > 0 && (
+                            <p className="text-sm font-bold text-emerald-700 mt-1">₹{b.claimedAmount}</p>
+                          )}
+                        </div>
+                      </div>
+
+                      {b.imageBase64 && (
+                        <div className="bg-slate-900 flex justify-center p-2">
+                          <img
+                            src={b.imageBase64}
+                            onClick={() => setZoomImg(b.imageBase64)}
+                            className="max-h-64 object-contain cursor-zoom-in"
+                          />
+                        </div>
+                      )}
+
+                      {/* Open Star Selection Bar */}
+                      <div className="px-4 py-3 bg-emerald-50/70 border-t border-emerald-100 flex items-center justify-between gap-2">
+                        <div>
+                          <p className="text-xs font-bold text-slate-800">⭐ Kitne Stars Dene Hain?</p>
+                          <p className="text-[11px] text-slate-500">₹1000 = 1★, ₹2000 = 2★, ₹3000 = 3★</p>
+                        </div>
+                        <div className="flex items-center gap-1.5">
+                          {[1, 2, 3].map((num) => (
+                            <button
+                              key={num}
+                              type="button"
+                              onClick={() => setStarInputs({ ...starInputs, [b.id]: num })}
+                              className={`px-2.5 py-1.5 rounded-lg text-xs font-bold border ${
+                                selectedStars === num
+                                  ? "bg-amber-400 border-amber-500 text-slate-900 shadow-sm"
+                                  : "bg-white border-slate-300 text-slate-600"
+                              }`}
+                            >
+                              {num}★
+                            </button>
+                          ))}
+                          <input
+                            type="number"
+                            min="1"
+                            max="20"
+                            value={selectedStars}
+                            onChange={(e) => setStarInputs({ ...starInputs, [b.id]: e.target.value })}
+                            className="w-12 text-center py-1.5 border border-slate-300 rounded-lg text-xs font-bold bg-white"
+                            title="Custom Stars"
+                          />
+                        </div>
+                      </div>
+
+                      <div className="p-3 grid grid-cols-2 gap-3 bg-slate-50 border-t">
+                        <button
+                          onClick={() => handleReject(b)}
+                          className="py-2.5 rounded-xl border border-red-200 bg-white text-red-600 font-bold text-sm"
+                        >
+                          ❌ Reject
+                        </button>
+                        <button
+                          onClick={() => handleApprove(b)}
+                          className="py-2.5 rounded-xl bg-emerald-600 text-white font-bold text-sm"
+                        >
+                          ✅ Approve (+{selectedStars} {selectedStars > 1 ? "Stars" : "Star"})
+                        </button>
                       </div>
                     </div>
-
-                    {b.imageBase64 && (
-                      <div className="bg-slate-900 flex justify-center p-2">
-                        <img
-                          src={b.imageBase64}
-                          onClick={() => setZoomImg(b.imageBase64)}
-                          className="max-h-64 object-contain cursor-zoom-in"
-                        />
-                      </div>
-                    )}
-
-                    <div className="p-3 grid grid-cols-2 gap-3 bg-slate-50">
-                      <button
-                        onClick={() => handleReject(b)}
-                        className="py-2.5 rounded-xl border border-red-200 bg-white text-red-600 font-bold text-sm"
-                      >
-                        ❌ Reject
-                      </button>
-                      <button
-                        onClick={() => handleApprove(b)}
-                        className="py-2.5 rounded-xl bg-emerald-600 text-white font-bold text-sm"
-                      >
-                        ✅ Approve (+1 Star)
-                      </button>
-                    </div>
-                  </div>
-                ))
+                  );
+                })
               )}
             </div>
           )}
 
           {tab === "customers" && (
-            <div className="space-y-2.5">
-              {customers.map((c) => {
-                const waMsg = `Namaste ${c.name} ji! ${STORE_NAME} mein aapke ${c.stars}/${STARS_FOR_REWARD} Stars hain. Is hafte ₹1000+ ki shopping par agla Star jodein!`;
-                return (
-                  <div key={c.phone} className="bg-white rounded-2xl p-4 border flex items-center justify-between">
-                    <div>
-                      <p className="font-bold">
-                        {c.name}{" "}
-                        <span className="text-xs bg-amber-100 text-amber-800 px-2 py-0.5 rounded-full">
-                          {c.stars} ★
-                        </span>
-                      </p>
-                      <p className="text-xs text-slate-500">
-                        {c.phone} • Approved Bills: {c.totalApprovedBills} • Rewards: {c.rewardsEarned}
-                      </p>
-                    </div>
-                    <div className="flex gap-2">
-                      {c.stars >= STARS_FOR_REWARD && (
+            <div className="space-y-3">
+              {/* Filter Buttons */}
+              <div className="flex flex-wrap gap-1.5 bg-white p-2 rounded-xl border border-slate-200">
+                <button
+                  onClick={() => setCustomerFilter("all")}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-bold ${
+                    customerFilter === "all"
+                      ? "bg-slate-900 text-white"
+                      : "bg-slate-100 text-slate-600 hover:bg-slate-200"
+                  }`}
+                >
+                  All ({customers.length})
+                </button>
+                <button
+                  onClick={() => setCustomerFilter("reminder_7")}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-bold ${
+                    customerFilter === "reminder_7"
+                      ? "bg-emerald-700 text-white"
+                      : "bg-emerald-50 text-emerald-800 border border-emerald-200"
+                  }`}
+                >
+                  🔔 7-Day Reminder ({reminderDueCount})
+                </button>
+                <button
+                  onClick={() => setCustomerFilter("near_complete")}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-bold ${
+                    customerFilter === "near_complete"
+                      ? "bg-amber-500 text-white"
+                      : "bg-amber-50 text-amber-800 border border-amber-200"
+                  }`}
+                >
+                  ⭐ Near Complete (Desc)
+                </button>
+                <button
+                  onClick={() => setCustomerFilter("inactive_15")}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-bold ${
+                    customerFilter === "inactive_15"
+                      ? "bg-red-600 text-white"
+                      : "bg-red-50 text-red-700 border border-red-200"
+                  }`}
+                >
+                  ⏳ 15+ Days Inactive ({inactiveCount})
+                </button>
+              </div>
+
+              {filteredCustomers.length === 0 ? (
+                <div className="bg-white rounded-2xl p-6 text-center border text-xs text-slate-500">
+                  Is filter mein abhi koi customer nahi hai.
+                </div>
+              ) : (
+                filteredCustomers.map((c) => {
+                  const daysInactive = getDaysSince(c.lastActivityAt);
+                  const daysLeft = daysInactive !== null ? Math.max(0, INACTIVE_DAYS_LIMIT - daysInactive) : null;
+                  const remStatus = getReminderStatus(c);
+                  const starsRemaining = Math.max(0, STARS_FOR_REWARD - (c.stars || 0));
+
+                  const baseWaMsg =
+                    starsRemaining === 0
+                      ? `Namaste ${c.name} ji! ${STORE_NAME} par aapke ${c.stars}/${STARS_FOR_REWARD} Stars poore ho chuke hain! Apna special Offer/Gift claim karne ke liye jald hi store par aayein.`
+                      : starsRemaining === 1
+                      ? `Namaste ${c.name} ji! ${STORE_NAME} par aapke ${c.stars}/${STARS_FOR_REWARD} Stars ho gaye hain—Free Gift & Offer unlock karne ke liye sirf 1 Star aur baaki hai! Is hafte ₹1000+ ki shopping par apna card complete karein.`
+                      : daysInactive !== null && daysInactive >= INACTIVE_DAYS_LIMIT
+                      ? `Namaste ${c.name} ji! ${STORE_NAME} par aapke ${c.stars}/${STARS_FOR_REWARD} Stars hain. Aapko store aaye ${daysInactive} din ho gaye hain—is hafte ₹1000+ ki shopping par agla Star jodein!`
+                      : `Namaste ${c.name} ji! ${STORE_NAME} mein aapke ${c.stars}/${STARS_FOR_REWARD} Stars hain. Is hafte ₹1000+ ki shopping par agla Star jodein!`;
+
+                  const waMsg = `${baseWaMsg}\n\nTo view: ${SITE_URL}`;
+
+                  return (
+                    <div key={c.phone} className="bg-white rounded-2xl p-4 border flex items-center justify-between gap-2">
+                      <div>
+                        <div className="flex items-center flex-wrap gap-1.5">
+                          <p className="font-bold">{c.name}</p>
+                          <span className="text-xs bg-amber-100 text-amber-800 font-bold px-2 py-0.5 rounded-full">
+                            {c.stars}/{STARS_FOR_REWARD} ★
+                          </span>
+                          {remStatus.due ? (
+                            <span className="text-[11px] bg-emerald-100 text-emerald-800 font-bold px-2 py-0.5 rounded-full">
+                              🔔 Reminder Due
+                            </span>
+                          ) : (
+                            <span className="text-[11px] bg-blue-50 text-blue-700 px-2 py-0.5 rounded-full">
+                              Next rem: {remStatus.nextInDays}d
+                            </span>
+                          )}
+                          {daysInactive !== null && (
+                            daysInactive >= INACTIVE_DAYS_LIMIT ? (
+                              <span className="text-[11px] bg-red-100 text-red-700 font-bold px-2 py-0.5 rounded-full">
+                                ⚠️ {daysInactive}d inactive
+                              </span>
+                            ) : (
+                              <span className="text-[11px] bg-slate-100 text-slate-600 px-2 py-0.5 rounded-full">
+                                ⏳ {daysLeft}d left
+                              </span>
+                            )
+                          )}
+                        </div>
+                        <p className="text-xs text-slate-500 mt-1">
+                          {c.phone} • Bills: {c.totalApprovedBills || 0} • Rewards: {c.rewardsEarned || 0}
+                        </p>
+                      </div>
+
+                      <div className="flex items-center gap-1.5 shrink-0">
+                        {c.stars >= STARS_FOR_REWARD && (
+                          <button
+                            onClick={() => handleRedeem(c)}
+                            className="bg-amber-500 text-white text-xs font-bold px-2.5 py-2 rounded-xl"
+                          >
+                            Redeem
+                          </button>
+                        )}
                         <button
-                          onClick={() => handleRedeem(c)}
-                          className="bg-amber-500 text-white text-xs font-bold px-3 py-2 rounded-xl"
+                          onClick={() => handleSendReminder(c, waMsg)}
+                          className={`px-2.5 py-2 rounded-xl text-xs font-bold border ${
+                            remStatus.due
+                              ? "bg-emerald-600 text-white border-emerald-700 shadow-sm"
+                              : "bg-emerald-50 text-emerald-700 border-emerald-200"
+                          }`}
+                          title="Send WhatsApp & Reset 7-Day Timer"
                         >
-                          Redeem
+                          💬 {remStatus.due ? "Remind" : ""}
                         </button>
-                      )}
-                      <a
-                        href={`https://wa.me/91${c.phone}?text=${encodeURIComponent(waMsg)}`}
-                        target="_blank"
-                        className="p-2 rounded-xl bg-emerald-50 text-emerald-700 border border-emerald-200 text-sm"
-                      >
-                        💬
-                      </a>
+                        <button
+                          onClick={() => handleRemoveCustomer(c)}
+                          className="p-2 rounded-xl bg-red-50 text-red-600 border border-red-200 text-sm hover:bg-red-100"
+                          title="Remove Customer"
+                        >
+                          🗑️
+                        </button>
+                      </div>
                     </div>
-                  </div>
-                );
-              })}
+                  );
+                })
+              )}
             </div>
           )}
 
