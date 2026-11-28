@@ -2,14 +2,15 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
-  <meta name="theme-color" content="#047857" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+  <meta name="theme-color" content="#022c22" />
+  <meta name="mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
   <meta name="apple-mobile-web-app-title" content="KFM Star Card" />
 
-  <!-- Security Headers (CSP, Referrer Policy, No-Sniff, HTTPS Upgrade) -->
-  <meta http-equiv="Content-Security-Policy" content="default-src 'self' https:; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://cdn.tailwindcss.com https://unpkg.com https://www.gstatic.com https://apis.google.com; style-src 'self' 'unsafe-inline' https://cdn.tailwindcss.com; img-src 'self' data: blob: https:; connect-src 'self' https://*.googleapis.com https://*.firebaseio.com https://*.firebaseapp.com wss://*.firebaseio.com; object-src 'none'; base-uri 'self'; upgrade-insecure-requests;" />
+  <!-- Security Headers (CSP updated for Three.js & GSAP CDNs) -->
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self' https:; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://cdn.tailwindcss.com https://unpkg.com https://cdnjs.cloudflare.com https://www.gstatic.com https://apis.google.com; style-src 'self' 'unsafe-inline' https://cdn.tailwindcss.com https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: blob: https:; connect-src 'self' https://*.googleapis.com https://*.firebaseio.com https://*.firebaseapp.com wss://*.firebaseio.com; object-src 'none'; base-uri 'self'; upgrade-insecure-requests;" />
   <meta http-equiv="X-Content-Type-Options" content="nosniff" />
   <meta name="referrer" content="strict-origin-when-cross-origin" />
 
@@ -20,6 +21,7 @@
   <link rel="preconnect" href="https://firestore.googleapis.com" crossorigin />
   <link rel="preconnect" href="https://identitytoolkit.googleapis.com" crossorigin />
   <link rel="preconnect" href="https://unpkg.com" crossorigin />
+  <link rel="preconnect" href="https://cdnjs.cloudflare.com" crossorigin />
   <link rel="preconnect" href="https://cdn.tailwindcss.com" crossorigin />
   <link rel="preload" as="image" href="./logo.png" />
 
@@ -57,8 +59,9 @@
           short_name: "KFM Star Card",
           start_url: "./",
           display: "standalone",
-          background_color: "#065f46",
-          theme_color: "#047857",
+          orientation: "portrait",
+          background_color: "#021812",
+          theme_color: "#022c22",
           icons: [
             { src: logoUrl, sizes: "192x192", type: "image/png", purpose: "any maskable" },
             { src: logoUrl, sizes: "512x512", type: "image/png", purpose: "any maskable" }
@@ -72,49 +75,166 @@
       } catch (e) {}
     })();
   </script>
-  
+
+  <!-- Non-blocking Deferred 3D & Animation Engines (0ms Startup Delay) -->
+  <script defer src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+  <script defer src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/gsap.min.js"></script>
+
   <!-- Tailwind CSS -->
   <script src="https://cdn.tailwindcss.com"></script>
-  
+
   <!-- React & Babel -->
   <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
   <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
   <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
 
   <style>
-    @keyframes floatSlow {
-      0%, 100% { transform: translateY(0px) rotate(0deg); }
-      50% { transform: translateY(-7px) rotate(4deg); }
+    * {
+      box-sizing: border-box;
+      -webkit-tap-highlight-color: transparent;
+      -webkit-touch-callout: none;
     }
-    @keyframes floatReverse {
-      0%, 100% { transform: translateY(0px) rotate(0deg); }
-      50% { transform: translateY(7px) rotate(-4deg); }
+
+    html, body {
+      margin: 0;
+      padding: 0;
+      background-color: #021812;
+      background-image:
+        radial-gradient(circle at 20% 8%, rgba(16, 185, 129, 0.25) 0px, transparent 48%),
+        radial-gradient(circle at 82% 18%, rgba(251, 191, 36, 0.18) 0px, transparent 50%),
+        radial-gradient(circle at 50% 92%, rgba(6, 95, 70, 0.32) 0px, transparent 55%);
+      color: #f8fafc;
+      min-height: 100dvh;
+      overflow-x: hidden;
+      overflow-y: auto;
+      -webkit-overflow-scrolling: touch;
+      touch-action: pan-y;
     }
+
+    input, select, textarea {
+      font-size: 16px !important;
+      touch-action: manipulation;
+    }
+
+    button, a, label {
+      touch-action: manipulation;
+    }
+
+    .safe-top {
+      padding-top: max(10px, env(safe-area-inset-top));
+    }
+
+    .safe-bottom {
+      padding-bottom: max(32px, calc(env(safe-area-inset-bottom) + 20px));
+    }
+
     @keyframes popIn {
-      0% { opacity: 0; transform: scale(0.9) translateY(10px); }
+      0% { opacity: 0; transform: scale(0.92) translateY(12px); }
+      70% { opacity: 1; transform: scale(1.01) translateY(-1px); }
       100% { opacity: 1; transform: scale(1) translateY(0); }
     }
-    @keyframes shimmerGlow {
-      0%, 100% { box-shadow: 0 0 10px rgba(251, 191, 36, 0.45); }
-      50% { box-shadow: 0 0 22px rgba(251, 191, 36, 0.85); }
-    }
+
     @keyframes pulseDot {
       0%, 100% { opacity: 0.35; transform: scale(0.9); }
-      50% { opacity: 1; transform: scale(1.1); }
+      50% { opacity: 1; transform: scale(1.15); }
     }
-    .animate-float { animation: floatSlow 3.6s ease-in-out infinite; }
-    .animate-float-rev { animation: floatReverse 4.2s ease-in-out infinite; }
-    .animate-pop { animation: popIn 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards; }
-    .star-glow { animation: shimmerGlow 2.2s ease-in-out infinite; }
 
-    /* Instant Splash Screen (Renders in 0ms before React boots) */
+    @keyframes btnBeam {
+      0% { left: -65%; }
+      55%, 100% { left: 145%; }
+    }
+
+    @keyframes starPulseRing {
+      0% { box-shadow: 0 0 0 0 rgba(251, 191, 36, 0.72), inset 0 0 10px rgba(255,255,255,0.6); }
+      70% { box-shadow: 0 0 0 10px rgba(251, 191, 36, 0), inset 0 0 10px rgba(255,255,255,0.6); }
+      100% { box-shadow: 0 0 0 0 rgba(251, 191, 36, 0), inset 0 0 10px rgba(255,255,255,0.6); }
+    }
+
+    @keyframes starLevitate {
+      0%, 100% { transform: translateY(0px) rotate(0deg) scale(1); }
+      50% { transform: translateY(-4px) rotate(5deg) scale(1.05); }
+    }
+
+    .animate-pop { animation: popIn 0.32s cubic-bezier(0.34, 1.56, 0.64, 1) forwards; }
+
+    /* Smooth Mobile Glass Card (Zero scroll-blocking transforms) */
+    .cyber-glass {
+      background: linear-gradient(155deg, rgba(6, 78, 59, 0.56), rgba(2, 44, 34, 0.86));
+      backdrop-filter: blur(14px);
+      -webkit-backdrop-filter: blur(14px);
+      border: 1px solid rgba(251, 191, 36, 0.28);
+      box-shadow:
+        0 16px 36px -14px rgba(0, 0, 0, 0.72),
+        inset 0 1px 0 0 rgba(255, 255, 255, 0.14);
+      position: relative;
+      overflow: hidden;
+      touch-action: pan-y;
+      transition: border-color 0.2s ease;
+    }
+
+    .cyber-glass:active {
+      border-color: rgba(251, 191, 36, 0.65);
+    }
+
+    .cyber-glass::before {
+      content: "";
+      position: absolute;
+      inset: -1px;
+      border-radius: inherit;
+      padding: 1px;
+      background: linear-gradient(135deg, rgba(251,191,36,0.55), rgba(16,185,129,0.16), rgba(245,158,11,0.6));
+      -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+      -webkit-mask-composite: xor;
+      mask-composite: exclude;
+      pointer-events: none;
+    }
+
+    /* Touch-First Liquid Gold Button */
+    .gold-reactor-btn {
+      position: relative;
+      overflow: hidden;
+      background: linear-gradient(135deg, #f59e0b 0%, #fbbf24 50%, #d97706 100%);
+      color: #022c22;
+      font-weight: 800;
+      min-height: 48px;
+      box-shadow: 0 10px 24px -6px rgba(251, 191, 36, 0.5);
+      transition: transform 0.15s ease;
+      user-select: none;
+    }
+
+    .gold-reactor-btn::after {
+      content: "";
+      position: absolute;
+      top: -50%;
+      left: -65%;
+      width: 50%;
+      height: 200%;
+      background: linear-gradient(90deg, transparent, rgba(255,255,255,0.6), transparent);
+      transform: rotate(25deg);
+      animation: btnBeam 3s infinite ease-in-out;
+      pointer-events: none;
+    }
+
+    .gold-reactor-btn:active {
+      transform: scale(0.96);
+    }
+
+    /* Glowing Star Reactor Node */
+    .star-node-active {
+      background: linear-gradient(145deg, #fde047, #f59e0b);
+      border: 2px solid #fef08a;
+      color: #022c22;
+      animation: starPulseRing 2.1s infinite, starLevitate 2.8s ease-in-out infinite;
+    }
+
+    /* 0ms Instant Mobile Splash Screen */
     .kfm-splash {
-      min-height: 100vh;
+      min-height: 100dvh;
       display: flex;
       flex-direction: column;
       align-items: center;
       justify-content: center;
-      background: linear-gradient(160deg, #065f46 0%, #0f766e 55%, #064e3b 100%);
+      background: radial-gradient(circle at center, #064e3b 0%, #021812 100%);
       color: #ffffff;
       text-align: center;
       padding: 24px;
@@ -124,15 +244,15 @@
       width: 84px;
       height: 84px;
       border-radius: 22px;
-      border: 2px solid rgba(252, 211, 77, 0.7);
-      box-shadow: 0 12px 28px rgba(0, 0, 0, 0.28);
+      border: 2px solid rgba(252, 211, 77, 0.75);
+      box-shadow: 0 12px 32px rgba(251, 191, 36, 0.28);
       margin-bottom: 14px;
       object-fit: cover;
     }
     .kfm-splash-title {
       font-size: 18px;
       font-weight: 800;
-      letter-spacing: 0.04em;
+      letter-spacing: 0.05em;
     }
     .kfm-splash-sub {
       font-size: 12px;
@@ -154,21 +274,10 @@
     }
     .kfm-splash-dots span:nth-child(2) { animation-delay: 0.2s; }
     .kfm-splash-dots span:nth-child(3) { animation-delay: 0.4s; }
-
-    /* Mobile-First Festive Grocery & Star Background */
-    .festive-bg {
-      background-color: #fffbeb;
-      background-image:
-        radial-gradient(circle at 12% 10%, rgba(251, 191, 36, 0.32) 0px, transparent 42%),
-        radial-gradient(circle at 88% 14%, rgba(16, 185, 129, 0.26) 0px, transparent 44%),
-        radial-gradient(circle at 85% 85%, rgba(249, 115, 22, 0.22) 0px, transparent 46%),
-        radial-gradient(circle at 15% 88%, rgba(20, 184, 166, 0.26) 0px, transparent 44%),
-        url("data:image/svg+xml,%3Csvg width='64' height='64' viewBox='0 0 80 80' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' fill-rule='evenodd'%3E%3Cg fill='%23059669' fill-opacity='0.065'%3E%3Cpath d='M40 14l4.5 9.2 10.1 1.5-7.3 7.1 1.7 10.1L40 37.1l-9 4.8 1.7-10.1-7.3-7.1 10.1-1.5L40 14zm0 44a6 6 0 1 1 0 12 6 6 0 0 1 0-12zM14 54l3 6 6.6 1-4.8 4.6 1.1 6.6L14 69l-5.9 3.2 1.1-6.6-4.8-4.6 6.6-1 3-6zm52 0l3 6 6.6 1-4.8 4.6 1.1 6.6L66 69l-5.9 3.2 1.1-6.6-4.8-4.6 6.6-1 3-6z'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E");
-    }
   </style>
 </head>
-<body class="festive-bg text-slate-900 font-sans min-h-screen relative overflow-x-hidden">
-  <!-- Instant Splash Screen until React mounts -->
+<body class="font-sans relative">
+  <!-- 0ms Instant Splash Screen until React mounts -->
   <div id="root">
     <div class="kfm-splash">
       <img src="./logo.png" alt="KFM Logo" onerror="this.style.display='none'" />
@@ -192,7 +301,370 @@
     const { useState, useEffect, useRef } = React;
 
     // ==========================================
-    // 1. FIREBASE CONFIG (Connected + Fast Parallel Auth)
+    // 1. PROCEDURAL WEB AUDIO SFX ENGINE (0 KB OVERHEAD)
+    // ==========================================
+    class SoundEngine {
+      constructor() {
+        this.enabled = localStorage.getItem("kfm_sfx_muted") !== "1";
+        this.ctx = null;
+      }
+      setEnabled(val) {
+        this.enabled = val;
+        localStorage.setItem("kfm_sfx_muted", val ? "0" : "1");
+      }
+      init() {
+        if (!this.ctx) {
+          const AudioCtx = window.AudioContext || window.webkitAudioContext;
+          if (AudioCtx) this.ctx = new AudioCtx();
+        }
+        if (this.ctx && this.ctx.state === "suspended") {
+          this.ctx.resume().catch(() => {});
+        }
+      }
+      playTapSparkle() {
+        if (!this.enabled) return;
+        this.init();
+        if (!this.ctx) return;
+        const now = this.ctx.currentTime;
+        const osc = this.ctx.createOscillator();
+        const gain = this.ctx.createGain();
+        osc.type = "sine";
+        osc.frequency.setValueAtTime(880, now);
+        osc.frequency.exponentialRampToValueAtTime(1320, now + 0.08);
+        gain.gain.setValueAtTime(0.001, now);
+        gain.gain.exponentialRampToValueAtTime(0.065, now + 0.015);
+        gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.12);
+        osc.connect(gain);
+        gain.connect(this.ctx.destination);
+        osc.start(now);
+        osc.stop(now + 0.14);
+      }
+      playStarChime(pitchMultiplier = 1) {
+        if (!this.enabled) return;
+        this.init();
+        if (!this.ctx) return;
+        const now = this.ctx.currentTime;
+        const freqs = [523.25, 659.25, 783.99, 1046.5];
+        freqs.forEach((f, idx) => {
+          const osc = this.ctx.createOscillator();
+          const gain = this.ctx.createGain();
+          osc.type = "triangle";
+          osc.frequency.setValueAtTime(f * pitchMultiplier, now + idx * 0.06);
+          gain.gain.setValueAtTime(0.001, now + idx * 0.06);
+          gain.gain.exponentialRampToValueAtTime(0.14, now + idx * 0.06 + 0.02);
+          gain.gain.exponentialRampToValueAtTime(0.0001, now + idx * 0.06 + 0.34);
+          osc.connect(gain);
+          gain.connect(this.ctx.destination);
+          osc.start(now + idx * 0.06);
+          osc.stop(now + idx * 0.06 + 0.36);
+        });
+      }
+      playJackpotFanfare() {
+        if (!this.enabled) return;
+        this.init();
+        if (!this.ctx) return;
+        const now = this.ctx.currentTime;
+        const notes = [523.25, 659.25, 783.99, 1046.5, 1318.5, 1567.98];
+        notes.forEach((f, i) => {
+          const osc = this.ctx.createOscillator();
+          const gain = this.ctx.createGain();
+          osc.type = "sine";
+          osc.frequency.setValueAtTime(f, now + i * 0.075);
+          gain.gain.setValueAtTime(0.001, now + i * 0.075);
+          gain.gain.exponentialRampToValueAtTime(0.16, now + i * 0.075 + 0.025);
+          gain.gain.exponentialRampToValueAtTime(0.0001, now + i * 0.075 + 0.55);
+          osc.connect(gain);
+          gain.connect(this.ctx.destination);
+          osc.start(now + i * 0.075);
+          osc.stop(now + i * 0.075 + 0.6);
+        });
+      }
+    }
+    const sfx = new SoundEngine();
+
+    let globalTriggerBurst = () => {};
+
+    // ==========================================
+    // 2. MOBILE-FIRST 3D WEBGL + TAP FX STAGE (SCROLL-SAFE)
+    // ==========================================
+    function MobilePremiumStage({ active }) {
+      const webglRef = useRef(null);
+      const fxRef = useRef(null);
+
+      useEffect(() => {
+        if (!active) return;
+
+        let animId = null;
+        let renderer = null;
+        let disposed = false;
+
+        const fxCanvas = fxRef.current;
+        const fxCtx = fxCanvas ? fxCanvas.getContext("2d") : null;
+        let fxW = fxCanvas ? (fxCanvas.width = window.innerWidth) : 0;
+        let fxH = fxCanvas ? (fxCanvas.height = window.innerHeight) : 0;
+        const bursts = [];
+        const shockwaves = [];
+
+        const spawnBurst = (x, y, count = 14) => {
+          if (!fxCtx) return;
+          const palette = ["#fbbf24", "#fde047", "#10b981", "#34d399", "#fb923c", "#ffffff"];
+          shockwaves.push({ x, y, r: 6, maxR: 95, alpha: 0.72 });
+          for (let i = 0; i < count; i++) {
+            const angle = (Math.PI * 2 * i) / count + (Math.random() - 0.5) * 0.4;
+            const speed = 1.8 + Math.random() * 4.2;
+            bursts.push({
+              x, y,
+              vx: Math.cos(angle) * speed,
+              vy: Math.sin(angle) * speed - 1.0,
+              gravity: 0.12,
+              size: 2.4 + Math.random() * 3.0,
+              life: 1,
+              decay: 0.024 + Math.random() * 0.015,
+              color: palette[Math.floor(Math.random() * palette.length)]
+            });
+          }
+        };
+        globalTriggerBurst = spawnBurst;
+
+        // Trigger burst only on quick tap (not while dragging/scrolling)
+        let touchStartPos = null;
+        const onTouchStart = (e) => {
+          const t = e.touches?.[0];
+          if (t) touchStartPos = { x: t.clientX, y: t.clientY, time: Date.now() };
+        };
+        const onTouchEnd = (e) => {
+          const t = e.changedTouches?.[0];
+          if (!t || !touchStartPos) return;
+          const dx = Math.abs(t.clientX - touchStartPos.x);
+          const dy = Math.abs(t.clientY - touchStartPos.y);
+          if (dx < 10 && dy < 10) {
+            spawnBurst(t.clientX, t.clientY, 12);
+          }
+          touchStartPos = null;
+        };
+        window.addEventListener("touchstart", onTouchStart, { passive: true });
+        window.addEventListener("touchend", onTouchEnd, { passive: true });
+
+        let scene = null;
+        let camera = null;
+        let heroGroup = null;
+        let heroStar = null;
+        let ring1 = null;
+        let ring2 = null;
+        let starField = null;
+        let tiltX = 0;
+        let tiltY = 0;
+
+        const onDeviceTilt = (e) => {
+          if (typeof e.gamma === "number" && typeof e.beta === "number") {
+            tiltX = Math.max(-1, Math.min(1, e.gamma / 30));
+            tiltY = Math.max(-1, Math.min(1, (e.beta - 45) / 30));
+          }
+        };
+        window.addEventListener("deviceorientation", onDeviceTilt, { passive: true });
+
+        const bootThreeTimer = setTimeout(() => {
+          if (disposed || !window.THREE || !webglRef.current) return;
+          const THREE = window.THREE;
+
+          scene = new THREE.Scene();
+          scene.fog = new THREE.FogExp2(0x021812, 0.036);
+
+          camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 100);
+          camera.position.set(0, 0, 14);
+
+          renderer = new THREE.WebGLRenderer({
+            canvas: webglRef.current,
+            alpha: true,
+            antialias: true,
+            powerPreference: "high-performance"
+          });
+          renderer.setSize(window.innerWidth, window.innerHeight);
+          renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.5));
+
+          scene.add(new THREE.AmbientLight(0x10b981, 0.95));
+
+          const goldLight = new THREE.PointLight(0xfbbf24, 2.6, 40);
+          goldLight.position.set(4, 6, 10);
+          scene.add(goldLight);
+
+          const rimLight = new THREE.PointLight(0x34d399, 2.0, 40);
+          rimLight.position.set(-5, -5, 6);
+          scene.add(rimLight);
+
+          const shape = new THREE.Shape();
+          const spikes = 5;
+          for (let i = 0; i < spikes * 2; i++) {
+            const r = i % 2 === 0 ? 1.7 : 0.76;
+            const angle = (i * Math.PI) / spikes - Math.PI / 2;
+            const x = Math.cos(angle) * r;
+            const y = Math.sin(angle) * r;
+            if (i === 0) shape.moveTo(x, y);
+            else shape.lineTo(x, y);
+          }
+          shape.closePath();
+
+          const geo = new THREE.ExtrudeGeometry(shape, {
+            depth: 0.38,
+            bevelEnabled: true,
+            bevelSegments: 3,
+            steps: 1,
+            bevelSize: 0.13,
+            bevelThickness: 0.13
+          });
+          geo.center();
+
+          const mat = new THREE.MeshStandardMaterial({
+            color: 0xfbbf24,
+            metalness: 0.84,
+            roughness: 0.18,
+            emissive: 0x92400e,
+            emissiveIntensity: 0.36
+          });
+
+          heroGroup = new THREE.Group();
+          heroStar = new THREE.Mesh(geo, mat);
+          heroGroup.add(heroStar);
+
+          ring1 = new THREE.Mesh(
+            new THREE.TorusGeometry(2.55, 0.038, 12, 72),
+            new THREE.MeshBasicMaterial({ color: 0xfbbf24, transparent: true, opacity: 0.42 })
+          );
+          ring1.rotation.x = Math.PI / 3;
+          heroGroup.add(ring1);
+
+          ring2 = new THREE.Mesh(
+            new THREE.TorusGeometry(3.1, 0.024, 12, 72),
+            new THREE.MeshBasicMaterial({ color: 0x34d399, transparent: true, opacity: 0.32 })
+          );
+          ring2.rotation.y = Math.PI / 4;
+          heroGroup.add(ring2);
+
+          heroGroup.position.set(0, 2.7, -3.5);
+          scene.add(heroGroup);
+
+          const pCount = 240;
+          const posArr = new Float32Array(pCount * 3);
+          for (let i = 0; i < pCount * 3; i++) {
+            posArr[i] = (Math.random() - 0.5) * 34;
+          }
+          const pGeo = new THREE.BufferGeometry();
+          pGeo.setAttribute("position", new THREE.BufferAttribute(posArr, 3));
+          starField = new THREE.Points(
+            pGeo,
+            new THREE.PointsMaterial({ size: 0.14, color: 0xfde047, transparent: true, opacity: 0.72 })
+          );
+          scene.add(starField);
+        }, 160);
+
+        const onResize = () => {
+          if (fxCanvas) {
+            fxW = fxCanvas.width = window.innerWidth;
+            fxH = fxCanvas.height = window.innerHeight;
+          }
+          if (camera && renderer) {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+          }
+        };
+        window.addEventListener("resize", onResize);
+
+        const renderLoop = (now) => {
+          if (disposed) return;
+          animId = requestAnimationFrame(renderLoop);
+
+          if (document.hidden) return;
+
+          if (renderer && scene && camera && heroStar) {
+            heroStar.rotation.y += 0.015;
+            heroStar.rotation.z = Math.sin(now * 0.0014) * 0.16;
+            ring1.rotation.z += 0.011;
+            ring2.rotation.x -= 0.009;
+            heroGroup.position.x += (tiltX * 0.75 - heroGroup.position.x) * 0.06;
+            heroGroup.position.y += (2.7 + tiltY * 0.65 - heroGroup.position.y) * 0.06;
+            starField.rotation.y += 0.0015;
+            renderer.render(scene, camera);
+          }
+
+          if (fxCtx && (shockwaves.length > 0 || bursts.length > 0)) {
+            fxCtx.clearRect(0, 0, fxW, fxH);
+
+            for (let i = shockwaves.length - 1; i >= 0; i--) {
+              const sw = shockwaves[i];
+              sw.r += (sw.maxR - sw.r) * 0.14;
+              sw.alpha -= 0.036;
+              if (sw.alpha <= 0) {
+                shockwaves.splice(i, 1);
+              } else {
+                fxCtx.save();
+                fxCtx.beginPath();
+                fxCtx.arc(sw.x, sw.y, sw.r, 0, Math.PI * 2);
+                fxCtx.strokeStyle = `rgba(251, 191, 36, ${sw.alpha})`;
+                fxCtx.lineWidth = 2;
+                fxCtx.stroke();
+                fxCtx.restore();
+              }
+            }
+
+            for (let i = bursts.length - 1; i >= 0; i--) {
+              const p = bursts[i];
+              p.x += p.vx;
+              p.y += p.vy;
+              p.vy += p.gravity;
+              p.vx *= 0.96;
+              p.life -= p.decay;
+              if (p.life <= 0) {
+                bursts.splice(i, 1);
+              } else {
+                fxCtx.save();
+                fxCtx.globalAlpha = p.life;
+                fxCtx.fillStyle = p.color;
+                fxCtx.beginPath();
+                fxCtx.arc(p.x, p.y, p.size * p.life, 0, Math.PI * 2);
+                fxCtx.fill();
+                fxCtx.restore();
+              }
+            }
+          } else if (fxCtx) {
+            fxCtx.clearRect(0, 0, fxW, fxH);
+          }
+        };
+        animId = requestAnimationFrame(renderLoop);
+
+        return () => {
+          disposed = true;
+          clearTimeout(bootThreeTimer);
+          cancelAnimationFrame(animId);
+          window.removeEventListener("touchstart", onTouchStart);
+          window.removeEventListener("touchend", onTouchEnd);
+          window.removeEventListener("deviceorientation", onDeviceTilt);
+          window.removeEventListener("resize", onResize);
+          if (renderer) renderer.dispose();
+        };
+      }, [active]);
+
+      if (!active) return null;
+
+      return (
+        <>
+          <canvas ref={webglRef} aria-hidden="true" className="fixed inset-0 w-screen h-screen pointer-events-none z-0" />
+          <canvas ref={fxRef} aria-hidden="true" className="fixed inset-0 w-screen h-screen pointer-events-none z-20" />
+        </>
+      );
+    }
+
+    // Scroll-Friendly Glass Card (Never blocks vertical finger scroll)
+    function MobileGlassCard({ children, className = "" }) {
+      return (
+        <div className={`cyber-glass ${className}`}>
+          {children}
+        </div>
+      );
+    }
+
+    // ==========================================
+    // 3. FIREBASE CONFIG (Connected + Fast Parallel Auth)
     // ==========================================
     const firebaseConfig = {
       apiKey: "AIzaSyDqy3SmMrTyO1glyairloHUnVso306Ow2o",
@@ -242,7 +714,7 @@
     };
 
     // ==========================================
-    // 2. STORE & SECURITY SETTINGS
+    // 4. STORE & SECURITY SETTINGS
     // ==========================================
     const STORE_NAME = "KHANDELWAL FOOD MART";
     const SITE_URL = "https://lakshya9449.github.io/kfm-loyalty/";
@@ -263,7 +735,7 @@
     const REMINDER_DAYS_CYCLE = 7;
 
     // ==========================================
-    // 3. SECURITY HELPERS (XSS, CSRF, VALIDATION)
+    // 5. SECURITY HELPERS (XSS, CSRF, VALIDATION)
     // ==========================================
     const getSessionCsrfToken = () => {
       let token = sessionStorage.getItem("kfm_csrf_token");
@@ -436,9 +908,6 @@
       };
     };
 
-    // ==========================================
-    // INTERACTIVE FULL-SCREEN BILL PHOTO ZOOM MODAL
-    // ==========================================
     function BillZoomModal({ src, title, onClose }) {
       const [zoomed, setZoomed] = useState(false);
 
@@ -451,7 +920,7 @@
         >
           <div
             onClick={(e) => e.stopPropagation()}
-            className="flex items-center justify-between px-4 py-3 bg-slate-900/90 border-b border-slate-700 text-white shrink-0"
+            className="safe-top flex items-center justify-between px-4 py-3 bg-slate-900/95 border-b border-slate-700 text-white shrink-0"
           >
             <div className="min-w-0 pr-2">
               <p className="text-xs font-extrabold truncate">{title || "Bill Receipt Photo"}</p>
@@ -463,16 +932,16 @@
               <button
                 type="button"
                 onClick={() => setZoomed((z) => !z)}
-                className="px-3 py-1.5 rounded-xl bg-amber-400 text-slate-900 font-extrabold text-xs shadow"
+                className="px-3 py-2 rounded-xl bg-amber-400 text-slate-900 font-extrabold text-xs shadow active:scale-95"
               >
-                {zoomed ? "🔎 Fit Screen" : "🔍 Zoom In (2x)"}
+                {zoomed ? "🔎 Fit" : "🔍 Zoom 2x"}
               </button>
               <button
                 type="button"
                 onClick={onClose}
-                className="px-3 py-1.5 rounded-xl bg-slate-700 hover:bg-slate-600 text-white font-bold text-xs"
+                className="px-3 py-2 rounded-xl bg-slate-700 active:bg-slate-600 text-white font-bold text-xs"
               >
-                ✕ Close
+                ✕
               </button>
             </div>
           </div>
@@ -490,7 +959,7 @@
               style={
                 zoomed
                   ? { width: "185%", maxWidth: "none", cursor: "zoom-out" }
-                  : { maxHeight: "84vh", maxWidth: "100%", cursor: "zoom-in" }
+                  : { maxHeight: "82dvh", maxWidth: "100%", cursor: "zoom-in" }
               }
               className="rounded-lg shadow-2xl transition-all duration-200 select-none"
             />
@@ -500,51 +969,25 @@
     }
 
     // ==========================================
-    // MOBILE-OPTIMIZED DECORATIVE BACKGROUND
-    // ==========================================
-    function FestiveBackgroundDecor() {
-      return (
-        <div className="fixed inset-0 pointer-events-none overflow-hidden z-0 select-none" aria-hidden="true">
-          <div className="absolute -top-14 -left-14 w-56 h-56 rounded-full bg-amber-300/30 blur-3xl" />
-          <div className="absolute top-1/3 -right-16 w-60 h-60 rounded-full bg-emerald-300/25 blur-3xl" />
-          <div className="absolute bottom-12 -left-14 w-56 h-56 rounded-full bg-orange-300/25 blur-3xl" />
-          <div className="absolute -bottom-16 right-0 w-60 h-60 rounded-full bg-teal-300/25 blur-3xl" />
-
-          <div className="absolute top-16 left-2 w-9 h-9 rounded-xl bg-white/80 backdrop-blur-sm shadow-sm border border-amber-200 flex items-center justify-center text-lg animate-float opacity-85">
-            🧺
-          </div>
-          <div className="absolute top-20 right-2 w-9 h-9 rounded-full bg-white/80 backdrop-blur-sm shadow-sm border border-emerald-200 flex items-center justify-center text-base animate-float-rev opacity-85">
-            ⭐
-          </div>
-          <div className="absolute top-[48%] left-1.5 w-8 h-8 rounded-xl bg-white/75 backdrop-blur-sm shadow-sm border border-orange-200 flex items-center justify-center text-base animate-float-rev opacity-75">
-            🎁
-          </div>
-          <div className="absolute top-[52%] right-1.5 w-8 h-8 rounded-xl bg-white/75 backdrop-blur-sm shadow-sm border border-amber-200 flex items-center justify-center text-base animate-float opacity-75">
-            🛍️
-          </div>
-          <div className="absolute bottom-6 left-2.5 w-9 h-9 rounded-full bg-white/80 backdrop-blur-sm shadow-sm border border-teal-200 flex items-center justify-center text-base animate-float opacity-80">
-            🎊
-          </div>
-          <div className="absolute bottom-6 right-2.5 w-9 h-9 rounded-xl bg-white/80 backdrop-blur-sm shadow-sm border border-amber-200 flex items-center justify-center text-base animate-float-rev opacity-80">
-            ✨
-          </div>
-        </div>
-      );
-    }
-
-    // ==========================================
-    // MAIN APP (WITH SMART BACK NAVIGATION)
+    // MAIN APP (MOBILE-FIRST SHELL + SMART BACK + SFX)
     // ==========================================
     function App() {
       const isAdminUrl = new URLSearchParams(window.location.search).get("admin") === "true";
       const [mode, setMode] = useState(isAdminUrl ? "admin" : "customer");
+      const [soundOn, setSoundOn] = useState(() => sfx.enabled);
       const [backToast, setBackToast] = useState("");
       const tapCountRef = useRef(0);
       const tapTimerRef = useRef(null);
       const lastBackPressRef = useRef(0);
       const ignoreNextPopRef = useRef(false);
 
-      // Keep a history guard entry so Back button doesn't abruptly close the app on first press
+      const toggleSound = () => {
+        const next = !soundOn;
+        setSoundOn(next);
+        sfx.setEnabled(next);
+        if (next) sfx.playTapSparkle();
+      };
+
       useEffect(() => {
         try {
           if (!window.history.state || !window.history.state.kfmGuard) {
@@ -559,7 +1002,6 @@
             return;
           }
 
-          // Dispatch custom back event to portals/modals first
           const backEvent = new CustomEvent("kfm:backbutton", { cancelable: true, detail: { handled: false } });
           window.dispatchEvent(backEvent);
 
@@ -570,7 +1012,6 @@
             return;
           }
 
-          // If in Admin view, go back to Customer view first
           if (mode === "admin") {
             setMode("customer");
             try {
@@ -579,14 +1020,13 @@
             return;
           }
 
-          // Double-Back-To-Exit guard so accidental single press doesn't close the site
           const now = Date.now();
           if (now - lastBackPressRef.current < 2000) {
             ignoreNextPopRef.current = true;
             window.history.back();
           } else {
             lastBackPressRef.current = now;
-            setBackToast("Ek baar aur Back dabayein site band karne ke liye");
+            setBackToast("Ek baar aur Back dabayein app band karne ke liye");
             setTimeout(() => setBackToast(""), 2000);
             try {
               window.history.pushState({ kfmGuard: true, step: 1 }, "");
@@ -614,35 +1054,48 @@
       };
 
       return (
-        <div className="min-h-screen pb-14 relative">
-          {mode === "customer" && <FestiveBackgroundDecor />}
+        <div className="min-h-[100dvh] safe-bottom relative">
+          <MobilePremiumStage active={mode === "customer"} />
 
-          <header className="bg-gradient-to-r from-emerald-800 via-teal-700 to-emerald-800 text-white px-4 py-2.5 shadow-lg flex items-center justify-between sticky top-0 z-30 select-none border-b border-amber-300/30">
-            <div onClick={handleTitleTap} className="cursor-pointer flex items-center gap-2.5">
+          <header className="safe-top backdrop-blur-xl bg-emerald-950/80 text-white px-4 pb-2.5 shadow-lg flex items-center justify-between sticky top-0 z-30 select-none border-b border-amber-400/25">
+            <div onClick={handleTitleTap} className="cursor-pointer flex items-center gap-2.5 min-w-0">
               <StoreLogo className="w-10 h-10" />
-              <div>
-                <h1 className="font-extrabold text-sm sm:text-base tracking-wide leading-tight">{STORE_NAME}</h1>
-                <p className="text-[10px] text-amber-200 font-semibold tracking-wider uppercase">
+              <div className="min-w-0">
+                <h1 className="font-extrabold text-[15px] tracking-wide leading-tight truncate">{STORE_NAME}</h1>
+                <p className="text-[10px] text-amber-300 font-semibold tracking-wider uppercase">
                   ✨ Scan & Earn Star Club
                 </p>
               </div>
             </div>
-            {mode === "admin" && (
-              <button
-                onClick={() => setMode("customer")}
-                className="text-xs bg-emerald-950/80 hover:bg-emerald-950 px-3 py-1.5 rounded-full border border-emerald-500 font-medium"
-              >
-                ← Customer View
-              </button>
-            )}
+
+            <div className="flex items-center gap-2 shrink-0">
+              {mode === "customer" && (
+                <button
+                  type="button"
+                  onClick={toggleSound}
+                  className="w-9 h-9 rounded-full bg-emerald-900/90 active:scale-90 border border-amber-400/40 text-amber-200 flex items-center justify-center text-sm shadow"
+                  title="Sound Effects Toggle"
+                >
+                  {soundOn ? "🔊" : "🔇"}
+                </button>
+              )}
+              {mode === "admin" && (
+                <button
+                  onClick={() => setMode("customer")}
+                  className="text-xs bg-emerald-900 active:scale-95 px-3 py-2 rounded-full border border-emerald-500 font-bold"
+                >
+                  ← Customer
+                </button>
+              )}
+            </div>
           </header>
 
-          <main className={`${mode === "customer" ? "max-w-md" : "max-w-xl"} mx-auto px-3.5 py-3 relative z-10`}>
+          <main className="w-full max-w-[440px] mx-auto px-3.5 pt-3 relative z-10">
             {mode === "customer" ? <CustomerPortal /> : <AdminPortal />}
           </main>
 
           {backToast && (
-            <div className="fixed bottom-5 left-1/2 -translate-x-1/2 bg-slate-900/95 text-white text-xs font-bold px-4 py-2.5 rounded-full shadow-xl z-50 border border-slate-700 whitespace-nowrap animate-pop">
+            <div className="fixed bottom-6 left-1/2 -translate-x-1/2 bg-slate-900/95 text-amber-200 text-xs font-bold px-4 py-2.5 rounded-full shadow-xl z-50 border border-amber-400/40 whitespace-nowrap animate-pop">
               {backToast}
             </div>
           )}
@@ -651,7 +1104,7 @@
     }
 
     // ==========================================
-    // CUSTOMER PORTAL (0MS INSTANT CACHE + SMART BACK STEP)
+    // CUSTOMER PORTAL (100% MOBILE-FIRST TOUCH UX)
     // ==========================================
     function CustomerPortal() {
       const initialPhone = (() => {
@@ -673,22 +1126,20 @@
       const [myBills, setMyBills] = useState([]);
       const [zoomBillData, setZoomBillData] = useState(null);
 
-      // Missing Item Request state
       const [itemRequest, setItemRequest] = useState("");
       const [requestSending, setRequestSending] = useState(false);
       const [requestSentMsg, setRequestSentMsg] = useState("");
 
-      // Save Card on Home Screen state
       const [deferredPrompt, setDeferredPrompt] = useState(null);
       const [showHomeScreenModal, setShowHomeScreenModal] = useState(false);
       const [hideInstallBanner, setHideInstallBanner] = useState(() => localStorage.getItem("kfm_hide_install") === "1");
 
-      // Joyful Attention Popups
       const [activePopup, setActivePopup] = useState(null);
       const shownEventsRef = useRef(new Set());
       const unsubRefs = useRef([]);
 
       const goBackToNumberScreen = () => {
+        sfx.playTapSparkle();
         unsubRefs.current.forEach((fn) => fn && fn());
         unsubRefs.current = [];
         localStorage.removeItem("kfm_phone");
@@ -700,7 +1151,6 @@
         setMsg(null);
       };
 
-      // Handle Android/Browser Back button inside CustomerPortal
       useEffect(() => {
         const onBackBtn = (e) => {
           if (zoomBillData) {
@@ -740,6 +1190,7 @@
       }, []);
 
       const handleSaveHomeScreen = async () => {
+        sfx.playTapSparkle();
         if (deferredPrompt) {
           deferredPrompt.prompt();
           const choice = await deferredPrompt.userChoice;
@@ -777,6 +1228,11 @@
           writeCachedCustomer(cleanPhone, initialData);
           setLoading(false);
 
+          if (!silentBackground) {
+            sfx.playStarChime(1.05);
+            globalTriggerBurst(window.innerWidth / 2, window.innerHeight * 0.3, 24);
+          }
+
           unsubRefs.current.forEach((fn) => fn && fn());
           unsubRefs.current = [];
 
@@ -794,6 +1250,8 @@
               ) {
                 shownEventsRef.current.add(rewardKey);
                 localStorage.setItem(rewardKey, "1");
+                sfx.playJackpotFanfare();
+                globalTriggerBurst(window.innerWidth / 2, window.innerHeight / 2, 50);
                 setActivePopup({
                   type: "reward_complete",
                   name: sanitizeText(data.name, 40),
@@ -821,6 +1279,8 @@
                 shownEventsRef.current.add(seenKey);
                 localStorage.setItem(seenKey, "1");
                 const awarded = latestApproved.starsAwarded || 1;
+                sfx.playStarChime(1.15);
+                globalTriggerBurst(window.innerWidth / 2, window.innerHeight * 0.35, 34);
                 setActivePopup((prev) =>
                   prev?.type === "reward_complete"
                     ? prev
@@ -887,6 +1347,7 @@
           const compressed = await compressBillImage(file);
           setPreviewImage(compressed);
           setMsg(null);
+          sfx.playTapSparkle();
         } catch (err) {
           e.target.value = "";
           setPreviewImage(null);
@@ -959,6 +1420,9 @@
             text: "✅ Bill upload ho gaya! Verification ke baad Star add ho jayega."
           });
 
+          sfx.playStarChime(1.1);
+          globalTriggerBurst(window.innerWidth / 2, window.innerHeight / 2, 38);
+
           setActivePopup({
             type: "upload_success",
             billNumber: cleanBillNo
@@ -994,6 +1458,7 @@
           });
           localStorage.setItem("kfm_last_demand_ms", String(Date.now()));
           setItemRequest("");
+          sfx.playTapSparkle();
           setRequestSentMsg(`✅ "${cleanItem}" note kar liya hai! Samaan aate hi WhatsApp par batayenge.`);
           setTimeout(() => setRequestSentMsg(""), 5000);
         } catch (err) {
@@ -1003,20 +1468,20 @@
       };
 
       const RiceExclusionNotice = () => (
-        <div className="bg-amber-50/95 border-2 border-amber-300 rounded-2xl p-3 flex items-start gap-2.5 shadow-sm">
+        <MobileGlassCard className="rounded-2xl p-3.5 flex items-start gap-2.5">
           <span className="text-lg leading-none mt-0.5 shrink-0">📢</span>
-          <div className="text-xs text-amber-950 leading-relaxed">
-            <p className="font-extrabold text-amber-900">Zaroori Soochna (30 November Ke Baad):</p>
-            <p className="mt-0.5 font-medium">
-              30 November ke baad Stars sirf <strong>Rice (Chawal) ko chhodkar</strong> baaki bill amount par hi milenge{" "}
-              <span className="text-amber-800 font-semibold">(Bill amount exclusive of Rice)</span>.
+          <div className="text-xs text-amber-100 leading-relaxed relative z-10">
+            <p className="font-extrabold text-amber-300">Zaroori Soochna (30 November Ke Baad):</p>
+            <p className="mt-0.5 text-emerald-100/90">
+              30 November ke baad Stars sirf <strong className="text-white">Rice (Chawal) ko chhodkar</strong> baaki bill amount par hi milenge{" "}
+              <span className="text-amber-300 font-semibold">(Bill amount exclusive of Rice)</span>.
             </p>
           </div>
-        </div>
+        </MobileGlassCard>
       );
 
       // ==========================================
-      // MOBILE-FIRST WELCOME & LOGIN VIEW
+      // MOBILE WELCOME & LOGIN VIEW
       // ==========================================
       if (!customer) {
         return (
@@ -1025,85 +1490,87 @@
               <button
                 type="button"
                 onClick={() => {
+                  sfx.playTapSparkle();
                   setIsNewUser(false);
                   setName("");
                 }}
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-white/95 border border-emerald-200 text-xs font-extrabold text-emerald-800 shadow-sm"
+                className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-emerald-900/85 active:scale-95 border border-amber-400/35 text-xs font-extrabold text-amber-200 shadow"
               >
                 ← Number Badlein
               </button>
             )}
 
-            <div className="bg-gradient-to-br from-emerald-800 via-teal-700 to-amber-500 text-white rounded-3xl p-5 shadow-xl relative overflow-hidden">
-              <div className="absolute -right-4 -top-4 text-6xl opacity-20 select-none animate-float">🎁</div>
-              <div className="flex items-center gap-3 mb-2.5">
+            <MobileGlassCard className="rounded-3xl p-5">
+              <div className="flex items-center gap-3 mb-2.5 relative z-10">
                 <StoreLogo className="w-12 h-12 rounded-2xl" />
                 <div>
-                  <span className="inline-block bg-white/20 backdrop-blur-sm text-amber-200 text-[10px] font-extrabold px-2.5 py-0.5 rounded-full uppercase tracking-wider">
-                    🎉 Free Gifts & Special Offers
+                  <span className="inline-block bg-amber-400/20 border border-amber-300/40 text-amber-300 text-[10px] font-extrabold px-2.5 py-0.5 rounded-full uppercase tracking-wider">
+                    🎉 VIP Star Rewards
                   </span>
-                  <h2 className="text-lg font-extrabold leading-snug mt-0.5">
+                  <h2 className="text-[17px] font-extrabold leading-snug mt-1 text-white">
                     Har ₹{MIN_BILL_AMOUNT}+ Shopping Par Payein <span className="text-amber-300">Golden Star! ⭐</span>
                   </h2>
                 </div>
               </div>
-              <p className="text-xs text-emerald-50">
-                Bas <strong>{STARS_FOR_REWARD} Stars</strong> poore karein aur jeetein exciting Gifts & Offers!
+              <p className="text-xs text-emerald-100/85 relative z-10">
+                Bas <strong className="text-amber-300">{STARS_FOR_REWARD} Stars</strong> poore karein aur jeetein exciting Gifts & Offers!
               </p>
 
-              <div className="grid grid-cols-3 gap-2 mt-3.5">
-                <div className="bg-white/15 backdrop-blur-sm rounded-2xl p-2 text-center border border-white/20">
+              <div className="grid grid-cols-3 gap-2 mt-3.5 relative z-10">
+                <div className="bg-black/35 rounded-2xl p-2.5 text-center border border-emerald-500/25">
                   <div className="text-lg">🛍️</div>
-                  <p className="text-[10px] font-bold mt-0.5">1. Shop ₹{MIN_BILL_AMOUNT}+</p>
+                  <p className="text-[10px] font-bold text-emerald-100 mt-1">1. Shop ₹{MIN_BILL_AMOUNT}+</p>
                 </div>
-                <div className="bg-white/15 backdrop-blur-sm rounded-2xl p-2 text-center border border-white/20">
+                <div className="bg-black/35 rounded-2xl p-2.5 text-center border border-emerald-500/25">
                   <div className="text-lg">📸</div>
-                  <p className="text-[10px] font-bold mt-0.5">2. Upload Bill</p>
+                  <p className="text-[10px] font-bold text-emerald-100 mt-1">2. Upload Bill</p>
                 </div>
-                <div className="bg-white/15 backdrop-blur-sm rounded-2xl p-2 text-center border border-white/20">
+                <div className="bg-black/35 rounded-2xl p-2.5 text-center border border-amber-400/35">
                   <div className="text-lg">🎁</div>
-                  <p className="text-[10px] font-bold mt-0.5">3. Win Gifts!</p>
+                  <p className="text-[10px] font-bold text-amber-300 mt-1">3. Win Gifts!</p>
                 </div>
               </div>
-            </div>
+            </MobileGlassCard>
 
             <RiceExclusionNotice />
 
-            <div className="bg-white/95 backdrop-blur-md rounded-3xl shadow-lg border border-white p-5">
-              <h3 className="text-base font-extrabold text-slate-800 text-center">
+            <MobileGlassCard className="rounded-3xl p-5">
+              <h3 className="text-base font-extrabold text-white text-center relative z-10">
                 Apna Star Card Kholne Ke Liye Number Dalein
               </h3>
 
-              <form onSubmit={handleLogin} className="space-y-3.5 mt-3.5">
+              <form onSubmit={handleLogin} className="space-y-3.5 mt-3.5 relative z-10">
                 <div>
-                  <label className="block text-[11px] font-bold text-slate-600 uppercase mb-1">
+                  <label className="block text-[11px] font-bold text-amber-300 uppercase mb-1">
                     📱 Mobile Number
                   </label>
                   <input
                     type="tel"
                     inputMode="numeric"
+                    autoComplete="tel-national"
                     maxLength={10}
                     pattern="[6-9][0-9]{9}"
                     placeholder="10-digit mobile number"
                     value={phone}
                     onChange={(e) => setPhone(e.target.value.replace(/\D/g, "").slice(0, 10))}
-                    className="w-full px-4 py-3 bg-white border-2 border-emerald-200 rounded-2xl text-base font-semibold tracking-wider outline-none focus:border-emerald-500"
+                    className="w-full px-4 py-3.5 bg-black/45 border-2 border-emerald-500/40 focus:border-amber-400 rounded-2xl font-bold text-white placeholder-emerald-300/40 tracking-wider outline-none transition"
                     required
                   />
                 </div>
 
                 {isNewUser && (
-                  <div className="animate-pop bg-amber-50 p-3 rounded-2xl border border-amber-200">
-                    <label className="block text-[11px] font-bold text-amber-900 uppercase mb-1">
+                  <div className="animate-pop bg-black/40 p-3 rounded-2xl border border-amber-400/40">
+                    <label className="block text-[11px] font-bold text-amber-300 uppercase mb-1">
                       ✨ Swagat Hai! Apna Shubh Naam Likhein
                     </label>
                     <input
                       type="text"
+                      autoComplete="name"
                       maxLength={40}
                       placeholder="Apna naam likhein"
                       value={name}
                       onChange={(e) => setName(e.target.value)}
-                      className="w-full px-3.5 py-2.5 bg-white border border-amber-300 rounded-xl text-sm outline-none focus:ring-2 focus:ring-amber-500"
+                      className="w-full px-3.5 py-3 bg-black/50 border border-amber-300/50 rounded-xl text-white placeholder-emerald-200/40 outline-none focus:border-amber-400"
                       required
                     />
                   </div>
@@ -1112,18 +1579,18 @@
                 <button
                   type="submit"
                   disabled={loading}
-                  className="w-full bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white font-extrabold text-sm py-3.5 rounded-2xl shadow-lg shadow-emerald-600/25 transition active:scale-[0.99]"
+                  className="gold-reactor-btn w-full text-sm py-3.5 rounded-2xl"
                 >
                   {loading ? "Checking..." : isNewUser ? "🎉 Mera Star Card Banayein" : "Apna Card Dekhein →"}
                 </button>
               </form>
-            </div>
+            </MobileGlassCard>
           </div>
         );
       }
 
       // ==========================================
-      // LOGGED-IN MOBILE-FIRST DASHBOARD
+      // LOGGED-IN MOBILE 3D VIP STAR PASS DASHBOARD
       // ==========================================
       const rewardReady = customer.stars >= STARS_FOR_REWARD;
       const progressPct = Math.min(100, Math.round(((customer.stars || 0) / STARS_FOR_REWARD) * 100));
@@ -1131,58 +1598,56 @@
       const numericAmt = claimedAmount ? Number(claimedAmount) : 0;
 
       return (
-        <div className="space-y-4">
-          {/* Quick Back to Number / Welcome Bar */}
-          <div className="flex items-center justify-between px-1">
+        <div className="space-y-3.5">
+          <div className="flex items-center justify-between px-0.5">
             <button
               type="button"
               onClick={goBackToNumberScreen}
-              className="inline-flex items-center gap-1 text-xs font-extrabold text-emerald-900 bg-white/90 hover:bg-white px-3 py-1.5 rounded-xl border border-emerald-200 shadow-sm"
+              className="inline-flex items-center gap-1 text-xs font-extrabold text-amber-200 bg-emerald-950/85 active:scale-95 px-3 py-2 rounded-xl border border-amber-400/30 shadow-sm"
             >
-              ← Number / Welcome Screen
+              ← Number / Welcome
             </button>
-            <span className="text-[10px] font-semibold text-slate-500">
-              Card Saved
+            <span className="text-[10px] font-semibold text-emerald-300/80">
+              VIP Pass Active
             </span>
           </div>
 
-          {/* POPUP MODAL FOR IMPORTANT UPDATES */}
           {activePopup && (
             <div
               onClick={() => setActivePopup(null)}
-              className="fixed inset-0 bg-slate-900/70 backdrop-blur-sm z-50 flex items-center justify-center p-4"
+              className="fixed inset-0 bg-black/80 backdrop-blur-md z-50 flex items-center justify-center p-4"
             >
               <div
                 onClick={(e) => e.stopPropagation()}
-                className="bg-white rounded-3xl max-w-xs w-full p-5 text-center shadow-2xl border-2 border-amber-300 animate-pop relative overflow-hidden"
+                className="cyber-glass rounded-3xl max-w-xs w-full p-5 text-center border-2 border-amber-400 shadow-2xl animate-pop"
               >
                 {activePopup.type === "upload_success" && (
                   <>
-                    <div className="w-14 h-14 mx-auto rounded-2xl bg-emerald-100 text-3xl flex items-center justify-center mb-2.5 animate-float">
+                    <div className="w-14 h-14 mx-auto rounded-2xl bg-emerald-500/20 border border-emerald-400/40 text-3xl flex items-center justify-center mb-2.5">
                       📸
                     </div>
-                    <span className="inline-block bg-emerald-100 text-emerald-800 text-[10px] font-extrabold px-2.5 py-0.5 rounded-full uppercase">
+                    <span className="inline-block bg-emerald-500/25 text-emerald-200 text-[10px] font-extrabold px-2.5 py-0.5 rounded-full uppercase">
                       Invoice #{activePopup.billNumber} Submitted!
                     </span>
-                    <h3 className="text-lg font-extrabold text-slate-800 mt-2">
+                    <h3 className="text-lg font-extrabold text-white mt-2">
                       Bill Upload Ho Gaya! 🎉
                     </h3>
-                    <p className="text-xs text-slate-600 mt-1 leading-relaxed">
+                    <p className="text-xs text-emerald-100/85 mt-1 leading-relaxed">
                       Verify hote hi aapka Star card mein jud jayega aur WhatsApp par update milega.
                     </p>
 
-                    <div className="mt-3.5 bg-gradient-to-r from-amber-50 to-orange-50 border border-amber-200 rounded-2xl p-3">
-                      <p className="text-xs font-bold text-slate-800">
+                    <div className="mt-3.5 bg-black/35 border border-amber-400/30 rounded-2xl p-3">
+                      <p className="text-xs font-bold text-amber-200">
                         {STORE_NAME} ki service pasand aayi?
                       </p>
-                      <p className="text-[11px] text-slate-600 mt-0.5">
+                      <p className="text-[11px] text-emerald-100/80 mt-0.5">
                         Google par 5★ rating dekar humein support karein!
                       </p>
                       <a
                         href={GOOGLE_REVIEW_URL}
                         target="_blank"
                         rel="noopener noreferrer"
-                        className="mt-2 w-full inline-flex items-center justify-center gap-1 bg-gradient-to-r from-amber-400 to-orange-400 text-slate-900 font-extrabold text-xs py-2.5 px-3 rounded-xl shadow"
+                        className="gold-reactor-btn mt-2 w-full inline-flex items-center justify-center gap-1 text-xs py-2.5 px-3 rounded-xl"
                       >
                         ⭐ Rate Us 5 Stars on Google
                       </a>
@@ -1192,33 +1657,33 @@
 
                 {activePopup.type === "star_approved" && (
                   <>
-                    <div className="w-14 h-14 mx-auto rounded-2xl bg-amber-100 text-3xl flex items-center justify-center mb-2.5 animate-float">
+                    <div className="w-14 h-14 mx-auto rounded-2xl bg-amber-400/20 border border-amber-400/40 text-3xl flex items-center justify-center mb-2.5">
                       ⭐
                     </div>
-                    <span className="inline-block bg-amber-100 text-amber-900 text-[10px] font-extrabold px-2.5 py-0.5 rounded-full uppercase">
+                    <span className="inline-block bg-amber-400/25 text-amber-200 text-[10px] font-extrabold px-2.5 py-0.5 rounded-full uppercase">
                       Verified & Approved!
                     </span>
-                    <h3 className="text-lg font-extrabold text-slate-800 mt-2">
+                    <h3 className="text-lg font-extrabold text-white mt-2">
                       Badhai Ho! +{activePopup.starsAwarded} {activePopup.starsAwarded > 1 ? "Stars" : "Star"} Mile! 🥳
                     </h3>
-                    <p className="text-xs text-slate-600 mt-1 leading-relaxed">
-                      Aapka Invoice #{activePopup.billNumber} verify ho gaya hai. Ab kul <strong>{customer.stars}/{STARS_FOR_REWARD} Stars</strong> ho gaye hain!
+                    <p className="text-xs text-emerald-100/85 mt-1 leading-relaxed">
+                      Aapka Invoice #{activePopup.billNumber} verify ho gaya hai. Ab kul <strong className="text-amber-300">{customer.stars}/{STARS_FOR_REWARD} Stars</strong> ho gaye hain!
                     </p>
                   </>
                 )}
 
                 {activePopup.type === "reward_complete" && (
                   <>
-                    <div className="w-14 h-14 mx-auto rounded-2xl bg-amber-100 text-3xl flex items-center justify-center mb-2.5 animate-float">
+                    <div className="w-14 h-14 mx-auto rounded-2xl bg-amber-400/20 border border-amber-400/40 text-3xl flex items-center justify-center mb-2.5">
                       🎁
                     </div>
-                    <span className="inline-block bg-amber-400 text-slate-900 text-[10px] font-extrabold px-2.5 py-0.5 rounded-full uppercase">
+                    <span className="inline-block bg-amber-400 text-emerald-950 text-[10px] font-extrabold px-2.5 py-0.5 rounded-full uppercase">
                       🏆 5/5 Stars Completed!
                     </span>
-                    <h3 className="text-lg font-extrabold text-slate-800 mt-2">
+                    <h3 className="text-lg font-extrabold text-white mt-2">
                       Aapka Reward Unlock Ho Gaya! 🎉
                     </h3>
-                    <p className="text-xs text-slate-600 mt-1 leading-relaxed">
+                    <p className="text-xs text-emerald-100/85 mt-1 leading-relaxed">
                       Shandar {activePopup.name} ji! Offers and Gifts will be updated to you on WhatsApp soon!
                     </p>
                   </>
@@ -1226,7 +1691,7 @@
 
                 <button
                   onClick={() => setActivePopup(null)}
-                  className="mt-3.5 w-full bg-slate-900 text-white font-bold text-xs py-2.5 rounded-xl"
+                  className="mt-3.5 w-full bg-emerald-900 active:scale-95 border border-emerald-500/40 text-white font-bold text-xs py-3 rounded-xl"
                 >
                   Awesome! Continue →
                 </button>
@@ -1234,35 +1699,34 @@
             </div>
           )}
 
-          {/* HOME SCREEN INSTALL GUIDE MODAL */}
           {showHomeScreenModal && (
             <div
               onClick={() => setShowHomeScreenModal(false)}
-              className="fixed inset-0 bg-slate-900/70 backdrop-blur-sm z-50 flex items-center justify-center p-4"
+              className="fixed inset-0 bg-black/80 backdrop-blur-md z-50 flex items-center justify-center p-4"
             >
               <div
                 onClick={(e) => e.stopPropagation()}
-                className="bg-white rounded-3xl max-w-xs w-full p-5 shadow-2xl border-2 border-emerald-300 animate-pop"
+                className="cyber-glass rounded-3xl max-w-xs w-full p-5 shadow-2xl border-2 border-amber-400/50 animate-pop"
               >
                 <div className="text-center mb-3">
                   <StoreLogo className="w-14 h-14 mx-auto mb-2 rounded-2xl" />
-                  <h3 className="text-base font-extrabold text-slate-800">
+                  <h3 className="text-base font-extrabold text-white">
                     KFM Star Card Home Screen Par Save Karein
                   </h3>
-                  <p className="text-[11px] text-slate-500 mt-0.5">
+                  <p className="text-[11px] text-emerald-200/80 mt-0.5">
                     Agli baar bina link dhoondhe 1 tap mein card kholein!
                   </p>
                 </div>
 
-                <div className="space-y-2.5 text-xs text-slate-700 bg-slate-50 p-3.5 rounded-2xl border border-slate-200">
+                <div className="space-y-2.5 text-xs text-emerald-100 bg-black/40 p-3.5 rounded-2xl border border-emerald-500/25">
                   <div>
-                    <p className="font-extrabold text-emerald-800">🤖 Android (Chrome):</p>
+                    <p className="font-extrabold text-amber-300">🤖 Android (Chrome):</p>
                     <p className="text-[11px] mt-0.5">
                       Upar right corner mein <strong>⋮ (3 dots)</strong> par tap karein → <strong>"Add to Home screen"</strong> ya <strong>"Install app"</strong> chunein.
                     </p>
                   </div>
-                  <div className="pt-2 border-t border-slate-200">
-                    <p className="font-extrabold text-emerald-800">🍎 iPhone (Safari):</p>
+                  <div className="pt-2 border-t border-emerald-500/20">
+                    <p className="font-extrabold text-amber-300">🍎 iPhone (Safari):</p>
                     <p className="text-[11px] mt-0.5">
                       Neeche <strong>⬆️ (Share)</strong> button dabakar <strong>"Add to Home Screen"</strong> par tap karein.
                     </p>
@@ -1271,7 +1735,7 @@
 
                 <button
                   onClick={() => setShowHomeScreenModal(false)}
-                  className="mt-4 w-full bg-emerald-600 text-white font-bold text-xs py-3 rounded-xl"
+                  className="gold-reactor-btn mt-4 w-full text-xs py-3 rounded-xl"
                 >
                   Samajh Gaya 👍
                 </button>
@@ -1279,20 +1743,19 @@
             </div>
           )}
 
-          {/* SAVE CARD ON HOME SCREEN BANNER */}
           {!hideInstallBanner && (
-            <div className="bg-white/95 backdrop-blur-md border border-amber-300 rounded-2xl px-3.5 py-2.5 shadow-sm flex items-center justify-between gap-2">
+            <MobileGlassCard className="rounded-2xl px-3.5 py-2.5 flex items-center justify-between gap-2">
               <button
                 type="button"
                 onClick={handleSaveHomeScreen}
-                className="flex items-center gap-2.5 text-left flex-1"
+                className="flex items-center gap-2.5 text-left flex-1 relative z-10 min-w-0"
               >
                 <StoreLogo className="w-8 h-8 rounded-lg" />
-                <div>
-                  <p className="text-xs font-extrabold text-slate-800 leading-tight">
+                <div className="min-w-0">
+                  <p className="text-xs font-extrabold text-white leading-tight truncate">
                     Save KFM Star Card on Home Screen
                   </p>
-                  <p className="text-[10px] text-slate-500">App icon ke saath 1-tap mein card kholein →</p>
+                  <p className="text-[10px] text-amber-300/85 truncate">App icon ke saath 1-tap mein card kholein →</p>
                 </div>
               </button>
               <button
@@ -1301,69 +1764,69 @@
                   setHideInstallBanner(true);
                   localStorage.setItem("kfm_hide_install", "1");
                 }}
-                className="text-slate-400 hover:text-slate-600 text-xs px-1.5 py-1"
+                className="text-emerald-300/70 active:text-white text-xs px-2 py-1.5 relative z-10"
                 title="Dismiss"
               >
                 ✕
               </button>
-            </div>
+            </MobileGlassCard>
           )}
 
-          {/* VIBRANT STAR CARD */}
-          <div className="bg-gradient-to-br from-emerald-800 via-teal-700 to-emerald-900 text-white rounded-3xl p-5 shadow-xl relative overflow-hidden border border-emerald-500/30">
-            <div className="absolute -right-5 -top-5 text-7xl opacity-10 select-none">⭐</div>
-
-            <div className="flex justify-between items-start relative z-10">
-              <div className="flex items-center gap-2.5">
+          {/* 3D HOLOGRAPHIC VIP STAR CARD */}
+          <MobileGlassCard className="rounded-3xl p-5">
+            <div className="flex justify-between items-start gap-2 relative z-10">
+              <div className="flex items-center gap-2.5 min-w-0">
                 <StoreLogo className="w-11 h-11 rounded-2xl" />
-                <div>
-                  <span className="inline-flex items-center gap-1 bg-amber-400/20 text-amber-300 text-[10px] font-extrabold uppercase tracking-wider px-2.5 py-0.5 rounded-full border border-amber-300/30">
+                <div className="min-w-0">
+                  <span className="inline-flex items-center gap-1 bg-amber-400/20 text-amber-300 text-[10px] font-extrabold uppercase tracking-wider px-2.5 py-0.5 rounded-full border border-amber-300/35">
                     ✨ VIP Loyalty Member
                   </span>
-                  <h2 className="text-lg font-extrabold mt-0.5 leading-tight">{customer.name}</h2>
-                  <p className="text-xs text-emerald-100">+91 {customer.phone}</p>
+                  <h2 className="text-lg font-extrabold mt-0.5 leading-tight text-white truncate">{customer.name}</h2>
+                  <p className="text-xs text-emerald-200/85 font-mono">+91 {customer.phone}</p>
                 </div>
               </div>
               <button
                 onClick={goBackToNumberScreen}
-                className="text-xs bg-white/15 hover:bg-white/25 px-3 py-1.5 rounded-xl font-semibold backdrop-blur-sm"
+                className="text-xs bg-white/10 active:bg-white/20 px-3 py-2 rounded-xl font-bold text-white border border-white/15 shrink-0"
               >
                 Change
               </button>
             </div>
 
-            <div className="my-3.5 bg-black/25 backdrop-blur-sm rounded-2xl p-3.5 border border-white/10">
+            <div className="my-4 bg-black/40 rounded-2xl p-3.5 border border-emerald-500/25 relative z-10">
               <div className="flex justify-between items-center text-xs mb-2">
-                <span className="text-emerald-100 font-semibold">Aapke Golden Stars</span>
-                <span className="font-extrabold text-amber-300 bg-amber-400/15 px-2.5 py-0.5 rounded-full text-[11px]">
+                <span className="text-emerald-200 font-semibold">Aapke Golden Stars</span>
+                <span className="font-extrabold text-amber-300 bg-amber-400/15 px-2.5 py-0.5 rounded-full text-[11px] border border-amber-400/30">
                   {customer.stars} / {STARS_FOR_REWARD} Stars ({progressPct}%)
                 </span>
               </div>
 
-              <div className="w-full h-2 bg-white/15 rounded-full overflow-hidden mb-3">
+              <div className="w-full h-2.5 bg-black/50 rounded-full overflow-hidden mb-3.5 p-0.5 border border-emerald-500/20">
                 <div
-                  className="h-full bg-gradient-to-r from-amber-300 via-yellow-400 to-orange-400 rounded-full transition-all duration-700"
+                  className="h-full bg-gradient-to-r from-emerald-400 via-amber-300 to-orange-500 rounded-full transition-all duration-700"
                   style={{ width: `${progressPct}%` }}
                 />
               </div>
 
-              <div className="grid grid-cols-5 gap-1.5">
+              <div className="grid grid-cols-5 gap-2">
                 {Array.from({ length: STARS_FOR_REWARD }).map((_, i) => {
                   const filled = i < customer.stars;
                   const isFinalGift = i === STARS_FOR_REWARD - 1;
                   return (
                     <div
                       key={i}
-                      className={`aspect-square rounded-2xl flex flex-col items-center justify-center border-2 transition-all ${
+                      style={{ animationDelay: `${i * 0.18}s` }}
+                      onClick={() => sfx.playTapSparkle()}
+                      className={`aspect-square rounded-2xl flex flex-col items-center justify-center transition-all cursor-pointer active:scale-90 ${
                         filled
-                          ? "bg-gradient-to-br from-amber-300 to-amber-500 border-yellow-200 star-glow scale-[1.03]"
-                          : "bg-white/10 border-dashed border-white/25"
+                          ? "star-node-active scale-[1.04]"
+                          : "bg-black/45 border border-dashed border-emerald-400/35 text-emerald-200/50"
                       }`}
                     >
-                      <span className={`text-xl ${filled ? "" : "opacity-55"}`}>
+                      <span className={`text-xl ${filled ? "" : "opacity-60"}`}>
                         {filled ? "⭐" : isFinalGift ? "🎁" : "☆"}
                       </span>
-                      <span className={`text-[9px] font-extrabold mt-0.5 ${filled ? "text-slate-900" : "text-emerald-200/70"}`}>
+                      <span className={`text-[9px] font-black mt-0.5 ${filled ? "text-emerald-950" : "text-emerald-200/65"}`}>
                         {isFinalGift ? "GIFT" : `#${i + 1}`}
                       </span>
                     </div>
@@ -1372,47 +1835,47 @@
               </div>
             </div>
 
-            <div className="bg-gradient-to-r from-amber-400/20 to-emerald-400/20 border border-amber-300/30 rounded-2xl p-2.5 text-xs flex items-center gap-2">
+            <div className="bg-black/35 border border-amber-400/25 rounded-2xl p-2.5 text-xs flex items-center gap-2.5 relative z-10">
               <span className="text-lg shrink-0">{rewardReady ? "🎉" : "🎁"}</span>
               {rewardReady ? (
-                <p className="font-bold text-amber-200 leading-snug">
+                <p className="font-bold text-amber-300 leading-snug">
                   Badhai ho! Aapka Card complete ho gaya hai! Offers and Gifts will be updated to you on WhatsApp.
                 </p>
               ) : (
-                <p className="text-white font-medium leading-snug">
+                <p className="text-emerald-100 font-medium leading-snug">
                   Offers and Gifts will be updated to you on WhatsApp once you complete the Card
                 </p>
               )}
             </div>
-          </div>
+          </MobileGlassCard>
 
           <RiceExclusionNotice />
 
           {pendingCount > 0 && (
-            <div className="bg-amber-100/95 backdrop-blur-sm border border-amber-300 text-amber-900 rounded-2xl px-3.5 py-2.5 flex items-center justify-between text-xs shadow-sm">
+            <div className="bg-amber-400/15 border border-amber-400/40 text-amber-200 rounded-2xl px-3.5 py-2.5 flex items-center justify-between text-xs shadow-sm animate-pop">
               <div className="flex items-center gap-2">
                 <span className="text-base">⏳</span>
                 <p className="font-bold">
                   Aapke {pendingCount} {pendingCount > 1 ? "bills" : "bill"} verification mein hain!
                 </p>
               </div>
-              <span className="bg-amber-500 text-white font-extrabold px-2 py-0.5 rounded-full text-[10px] uppercase">
+              <span className="bg-amber-400 text-emerald-950 font-extrabold px-2 py-0.5 rounded-full text-[10px] uppercase shrink-0">
                 In Review
               </span>
             </div>
           )}
 
           {/* BILL UPLOAD CARD */}
-          <div className="bg-white/95 backdrop-blur-md rounded-3xl shadow-lg border border-white p-5">
-            <div className="flex items-center gap-2.5">
-              <div className="w-10 h-10 rounded-2xl bg-gradient-to-br from-amber-400 to-orange-400 text-slate-900 flex items-center justify-center text-xl shadow-sm shrink-0">
+          <MobileGlassCard className="rounded-3xl p-5">
+            <div className="flex items-center gap-2.5 relative z-10">
+              <div className="w-10 h-10 rounded-2xl bg-gradient-to-br from-amber-300 to-amber-500 text-emerald-950 flex items-center justify-center text-xl shadow-md shrink-0">
                 📸
               </div>
               <div>
-                <h3 className="font-extrabold text-slate-800 text-sm">
+                <h3 className="font-extrabold text-white text-sm">
                   Naya Bill Upload Karein (₹{MIN_BILL_AMOUNT}+)
                 </h3>
-                <p className="text-[11px] text-slate-500">
+                <p className="text-[11px] text-emerald-200/75">
                   Bill ki photo upload karein. Verify hote hi Star jud jayega.
                 </p>
               </div>
@@ -1420,24 +1883,24 @@
 
             {msg && (
               <div
-                className={`mt-3 p-3 rounded-2xl text-xs ${
+                className={`mt-3 p-3 rounded-2xl text-xs animate-pop relative z-10 ${
                   msg.type === "ok"
-                    ? "bg-emerald-50 text-emerald-800 border border-emerald-200"
-                    : "bg-red-50 text-red-700 border border-red-200"
+                    ? "bg-emerald-500/20 text-emerald-200 border border-emerald-400/40"
+                    : "bg-red-500/20 text-red-200 border border-red-400/40"
                 }`}
               >
                 <p className="font-bold">{msg.text}</p>
 
                 {msg.type === "ok" && (
-                  <div className="mt-2.5 pt-2.5 border-t border-emerald-200/80 flex flex-col gap-2">
-                    <p className="text-[11px] text-slate-700">
-                      Service pasand aayi? Google par <strong>5★</strong> dekar support karein!
+                  <div className="mt-2.5 pt-2.5 border-t border-emerald-400/25 flex flex-col gap-2">
+                    <p className="text-[11px] text-emerald-100">
+                      Service pasand aayi? Google par <strong className="text-amber-300">5★</strong> dekar support karein!
                     </p>
                     <a
                       href={GOOGLE_REVIEW_URL}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="w-full inline-flex items-center justify-center gap-1 bg-amber-400 hover:bg-amber-500 text-slate-900 font-extrabold text-xs py-2 px-3 rounded-xl shadow-sm"
+                      className="gold-reactor-btn w-full inline-flex items-center justify-center gap-1 text-xs py-2.5 px-3 rounded-xl"
                     >
                       ⭐ Rate Us on Google
                     </a>
@@ -1446,11 +1909,11 @@
               </div>
             )}
 
-            <form onSubmit={handleBillSubmit} className="space-y-3 mt-3.5">
+            <form onSubmit={handleBillSubmit} className="space-y-3 mt-3.5 relative z-10">
               <div className="grid grid-cols-2 gap-2.5">
                 <div>
-                  <label className="block text-[11px] font-bold text-slate-700 mb-1">
-                    Invoice Number <span className="text-red-500">*</span>
+                  <label className="block text-[11px] font-bold text-amber-300 mb-1">
+                    Invoice No. <span className="text-red-400">*</span>
                   </label>
                   <input
                     type="text"
@@ -1458,12 +1921,12 @@
                     placeholder="e.g. 1042"
                     value={billNumber}
                     onChange={(e) => setBillNumber(e.target.value)}
-                    className="w-full px-3 py-2.5 bg-white border-2 border-slate-200 rounded-2xl text-sm font-semibold uppercase outline-none focus:border-emerald-500"
+                    className="w-full px-3 py-3 bg-black/45 border-2 border-emerald-500/35 focus:border-amber-400 rounded-2xl font-bold text-white placeholder-emerald-300/35 uppercase outline-none transition"
                     required
                   />
                 </div>
                 <div>
-                  <label className="block text-[11px] font-bold text-slate-700 mb-1">Total Amount (Optional)</label>
+                  <label className="block text-[11px] font-bold text-amber-300 mb-1">Amount (Optional)</label>
                   <input
                     type="number"
                     inputMode="numeric"
@@ -1472,47 +1935,47 @@
                     placeholder="1000+"
                     value={claimedAmount}
                     onChange={(e) => setClaimedAmount(e.target.value)}
-                    className="w-full px-3 py-2.5 bg-white border-2 border-slate-200 rounded-2xl text-sm font-semibold outline-none focus:border-emerald-500"
+                    className="w-full px-3 py-3 bg-black/45 border-2 border-emerald-500/35 focus:border-amber-400 rounded-2xl font-bold text-white placeholder-emerald-300/35 outline-none transition"
                   />
                 </div>
               </div>
 
               {numericAmt >= MIN_BILL_AMOUNT && numericAmt < 2000 && (
-                <div className="bg-amber-50 border border-amber-300 rounded-2xl px-3 py-2.5 text-xs text-amber-900 flex items-start gap-2 animate-pop">
+                <div className="bg-amber-400/15 border border-amber-400/40 rounded-2xl px-3 py-2.5 text-xs text-amber-200 flex items-start gap-2 animate-pop">
                   <span className="text-base leading-none mt-0.5">💡</span>
                   <p className="leading-snug text-[11px]">
-                    <strong>Smart Tip:</strong> ₹2,000+ ki shopping par seedha <strong>2 Stars</strong> milte hain! Agli baar ₹{2000 - numericAmt} aur add karne par double star payein.
+                    <strong className="text-amber-300">Smart Tip:</strong> ₹2,000+ ki shopping par seedha <strong className="text-white">2 Stars</strong> milte hain! Agli baar ₹{2000 - numericAmt} aur add karne par double star payein.
                   </p>
                 </div>
               )}
               {numericAmt >= 2000 && numericAmt <= MAX_BILL_AMOUNT && (
-                <div className="bg-emerald-50 border border-emerald-300 rounded-2xl px-3 py-2 text-xs text-emerald-800 flex items-center gap-2 animate-pop">
+                <div className="bg-emerald-500/20 border border-emerald-400/40 rounded-2xl px-3 py-2 text-xs text-emerald-200 flex items-center gap-2 animate-pop">
                   <span className="text-base">🔥</span>
                   <p className="font-bold text-[11px]">
-                    Shandar! ₹{numericAmt} ke bill par aapko {Math.floor(numericAmt / 1000)} Stars milenge!
+                    Shandar! ₹{numericAmt} ke bill par aapko <span className="text-amber-300">{Math.floor(numericAmt / 1000)} Stars</span> milenge!
                   </p>
                 </div>
               )}
 
               <div>
-                <label className="block text-[11px] font-bold text-slate-700 mb-1">
-                  Bill Ki Photo <span className="text-red-500">*</span>
+                <label className="block text-[11px] font-bold text-amber-300 mb-1">
+                  Bill Ki Photo <span className="text-red-400">*</span>
                 </label>
-                <label className="border-2 border-dashed border-emerald-300 hover:border-emerald-500 rounded-2xl p-3.5 flex flex-col items-center justify-center cursor-pointer bg-gradient-to-b from-emerald-50/70 to-amber-50/50 transition">
+                <label className="border-2 border-dashed border-amber-400/45 active:border-amber-300 rounded-2xl p-4 flex flex-col items-center justify-center cursor-pointer bg-black/35 transition">
                   {previewImage && isSafeImageDataUrl(previewImage) ? (
-                    <div className="text-center">
-                      <img src={previewImage} className="max-h-44 rounded-xl shadow mx-auto" />
-                      <span className="inline-block mt-2 text-[11px] font-bold text-emerald-700">
+                    <div className="text-center animate-pop">
+                      <img src={previewImage} className="max-h-44 rounded-xl shadow-lg mx-auto" />
+                      <span className="inline-block mt-2 text-[11px] font-bold text-amber-300">
                         🔄 Photo Badalne Ke Liye Tap Karein
                       </span>
                     </div>
                   ) : (
-                    <div className="text-center py-2.5">
-                      <div className="text-2xl mb-1">📷</div>
-                      <span className="text-xs font-extrabold text-emerald-800 block">
+                    <div className="text-center py-2">
+                      <div className="text-3xl mb-1.5">📷</div>
+                      <span className="text-xs font-extrabold text-white block">
                         Camera Kholne / Bill Photo Chunne Ke Liye Tap Karein
                       </span>
-                      <span className="text-[10px] text-slate-500">JPG/PNG/WEBP only • Max 8 MB</span>
+                      <span className="text-[10px] text-emerald-200/70">JPG/PNG/WEBP only • Max 8 MB</span>
                     </div>
                   )}
                   <input
@@ -1528,61 +1991,61 @@
               <button
                 type="submit"
                 disabled={uploading}
-                className="w-full bg-gradient-to-r from-emerald-600 via-teal-600 to-emerald-600 hover:from-emerald-700 hover:to-teal-700 text-white font-extrabold text-sm py-3.5 rounded-2xl shadow-lg shadow-emerald-600/25 transition active:scale-[0.99]"
+                className="gold-reactor-btn w-full text-sm py-3.5 rounded-2xl"
               >
                 {uploading ? "Uploading Bill..." : "✨ Submit Bill & Claim Star ⭐"}
               </button>
             </form>
-          </div>
+          </MobileGlassCard>
 
           {/* MISSING ITEM / DEMAND REQUEST BOX */}
-          <div className="bg-white/95 backdrop-blur-md rounded-3xl shadow-md border border-white p-4">
-            <div className="flex items-center gap-2 mb-2">
-              <div className="w-8 h-8 rounded-xl bg-amber-100 text-base flex items-center justify-center shrink-0">
+          <MobileGlassCard className="rounded-3xl p-4">
+            <div className="flex items-center gap-2 mb-2.5 relative z-10">
+              <div className="w-8 h-8 rounded-xl bg-amber-400/20 border border-amber-400/35 text-base flex items-center justify-center shrink-0">
                 💬
               </div>
               <div>
-                <h3 className="font-extrabold text-slate-800 text-xs">
+                <h3 className="font-extrabold text-white text-xs">
                   Koi Samaan Nahi Mila? Humein Batayein
                 </h3>
-                <p className="text-[10px] text-slate-500">
+                <p className="text-[10px] text-emerald-200/75">
                   Item likhein—mangwa kar aapko WhatsApp par batayenge
                 </p>
               </div>
             </div>
 
             {requestSentMsg && (
-              <div className="mb-2.5 px-3 py-2 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-800 text-[11px] font-semibold animate-pop">
+              <div className="mb-2.5 px-3 py-2 rounded-xl bg-emerald-500/20 border border-emerald-400/40 text-emerald-200 text-[11px] font-semibold animate-pop relative z-10">
                 {requestSentMsg}
               </div>
             )}
 
-            <form onSubmit={handleItemRequestSubmit} className="flex gap-2">
+            <form onSubmit={handleItemRequestSubmit} className="flex gap-2 relative z-10">
               <input
                 type="text"
                 maxLength={80}
-                placeholder="Jaise: Amul Cheese, Organic Honey..."
+                placeholder="Jaise: Amul Cheese, Honey..."
                 value={itemRequest}
                 onChange={(e) => setItemRequest(e.target.value)}
-                className="flex-1 px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-2xl text-xs font-medium outline-none focus:bg-white focus:border-emerald-500"
+                className="flex-1 min-w-0 px-3.5 py-2.5 bg-black/45 border border-emerald-500/35 focus:border-amber-400 rounded-2xl font-medium text-white placeholder-emerald-300/35 outline-none transition"
               />
               <button
                 type="submit"
                 disabled={requestSending || !itemRequest.trim()}
-                className="px-4 py-2.5 rounded-2xl bg-slate-900 hover:bg-slate-800 disabled:opacity-40 text-white font-bold text-xs shrink-0"
+                className="gold-reactor-btn px-4 py-2.5 rounded-2xl disabled:opacity-40 text-xs shrink-0"
               >
                 {requestSending ? "..." : "Bhejein"}
               </button>
             </form>
-          </div>
+          </MobileGlassCard>
 
           {/* CUSTOMER BILL HISTORY */}
           {myBills.length > 0 && (
-            <div className="bg-white/95 backdrop-blur-md rounded-3xl shadow-md border border-white p-5">
-              <h3 className="font-extrabold text-slate-800 text-xs uppercase tracking-wider mb-3 flex items-center gap-1.5">
+            <MobileGlassCard className="rounded-3xl p-5">
+              <h3 className="font-extrabold text-amber-300 text-xs uppercase tracking-wider mb-3 flex items-center gap-1.5 relative z-10">
                 🧾 Aapke Uploaded Bills ({myBills.length})
               </h3>
-              <div className="space-y-2">
+              <div className="space-y-2 relative z-10">
                 {myBills.map((b) => {
                   const awarded = b.starsAwarded || 1;
                   return (
@@ -1590,22 +2053,22 @@
                       key={b.id}
                       className={`flex items-center justify-between gap-2 p-3 rounded-2xl border ${
                         b.status === "approved"
-                          ? "bg-emerald-50/80 border-emerald-200"
+                          ? "bg-emerald-950/60 border-emerald-400/35"
                           : b.status === "pending"
-                          ? "bg-amber-50/80 border-amber-200"
-                          : "bg-red-50/80 border-red-200"
+                          ? "bg-amber-950/45 border-amber-400/35"
+                          : "bg-red-950/50 border-red-400/35"
                       }`}
                     >
                       <div className="min-w-0">
-                        <p className="text-xs font-extrabold text-slate-800">
+                        <p className="text-xs font-extrabold text-white">
                           Invoice #{b.billNumber}
                           {b.claimedAmount > 0 ? ` • ₹${b.claimedAmount}` : ""}
                         </p>
-                        <p className="text-[10px] text-slate-500 mt-0.5">
+                        <p className="text-[10px] text-emerald-200/70 mt-0.5">
                           📅 {formatDateTime(b.createdAt)}
                         </p>
                         {b.status === "rejected" && b.rejectReason && (
-                          <p className="text-[11px] text-red-600 mt-0.5">Reason: {b.rejectReason}</p>
+                          <p className="text-[11px] text-red-300 mt-0.5">Reason: {b.rejectReason}</p>
                         )}
                       </div>
 
@@ -1619,7 +2082,7 @@
                                 title: `Invoice #${b.billNumber} (${formatDateTime(b.createdAt)})`
                               })
                             }
-                            className="px-2 py-1 rounded-lg bg-white border border-slate-300 text-[10px] font-bold text-slate-700 hover:bg-slate-100"
+                            className="px-2.5 py-1.5 rounded-lg bg-white/10 border border-white/20 text-[10px] font-bold text-white active:bg-white/20"
                             title="Zoom Bill Photo"
                           >
                             🔍 Bill
@@ -1628,10 +2091,10 @@
                         <span
                           className={`text-[11px] font-extrabold px-2.5 py-1 rounded-full ${
                             b.status === "pending"
-                              ? "bg-amber-200/80 text-amber-900"
+                              ? "bg-amber-400/20 text-amber-300 border border-amber-400/35"
                               : b.status === "approved"
-                              ? "bg-emerald-600 text-white shadow-sm"
-                              : "bg-red-100 text-red-800"
+                              ? "bg-amber-400 text-emerald-950 shadow-sm"
+                              : "bg-red-500/25 text-red-200 border border-red-400/35"
                           }`}
                         >
                           {b.status === "pending"
@@ -1645,7 +2108,7 @@
                   );
                 })}
               </div>
-            </div>
+            </MobileGlassCard>
           )}
 
           {zoomBillData && (
@@ -1660,7 +2123,7 @@
     }
 
     // ==========================================
-    // ADMIN PORTAL (FIREBASE OWNER EMAIL/PASSWORD AUTH + SMART BACK STEP)
+    // ADMIN PORTAL (MOBILE-OPTIMIZED OWNER DASHBOARD)
     // ==========================================
     function AdminPortal() {
       const [unlocked, setUnlocked] = useState(() => isCurrentUserOwner());
@@ -1679,7 +2142,6 @@
       const [starInputs, setStarInputs] = useState({});
       const [zoomData, setZoomData] = useState(null);
 
-      // Date-by-Date Customer Bill Records State
       const [selectedRecordPhone, setSelectedRecordPhone] = useState("");
       const [recordSearch, setRecordSearch] = useState("");
       const [customerRecordBills, setCustomerRecordBills] = useState([]);
@@ -1698,7 +2160,6 @@
         }
       };
 
-      // Handle Back button inside AdminPortal before exiting to Customer View
       useEffect(() => {
         const onAdminBack = (e) => {
           if (zoomData) {
@@ -1933,7 +2394,7 @@
 
       if (!unlocked) {
         return (
-          <div className="bg-white rounded-2xl shadow-sm border p-6 mt-6 max-w-sm mx-auto">
+          <div className="bg-white text-slate-900 rounded-3xl shadow-xl border p-5 mt-4">
             <StoreLogo className="w-16 h-16 mx-auto mb-3 rounded-2xl" />
             <h2 className="text-lg font-bold text-center">Owner Verification Portal</h2>
             <p className="text-[11px] text-center text-slate-500 mt-0.5">
@@ -1957,7 +2418,7 @@
                   placeholder="Enter Owner Email"
                   value={ownerEmail}
                   onChange={(e) => setOwnerEmail(e.target.value)}
-                  className="w-full px-3.5 py-2.5 border rounded-xl text-sm outline-none focus:ring-2 focus:ring-emerald-600"
+                  className="w-full px-3.5 py-3 border rounded-xl outline-none focus:ring-2 focus:ring-emerald-600"
                   required
                 />
               </div>
@@ -1972,7 +2433,7 @@
                   placeholder="Enter Owner Password"
                   value={ownerPassword}
                   onChange={(e) => setOwnerPassword(e.target.value)}
-                  className="w-full px-3.5 py-2.5 border rounded-xl text-sm outline-none focus:ring-2 focus:ring-emerald-600"
+                  className="w-full px-3.5 py-3 border rounded-xl outline-none focus:ring-2 focus:ring-emerald-600"
                   required
                 />
               </div>
@@ -1980,7 +2441,7 @@
               <button
                 type="submit"
                 disabled={authLoading}
-                className="w-full bg-slate-900 hover:bg-slate-800 disabled:opacity-50 text-white font-bold py-3 rounded-xl text-sm"
+                className="w-full bg-slate-900 active:scale-95 disabled:opacity-50 text-white font-bold py-3.5 rounded-xl text-sm"
               >
                 {authLoading ? "Verifying..." : "Unlock Dashboard"}
               </button>
@@ -2037,22 +2498,22 @@
       const selectedRecordCustomer = customers.find((c) => c.phone === selectedRecordPhone) || null;
 
       return (
-        <div className="space-y-4 mt-1">
-          <div className="flex items-center justify-between bg-emerald-950 text-emerald-100 px-3.5 py-2 rounded-2xl text-[11px]">
-            <span>🛡️ Server-Verified Owner Session (15m Auto-Lock)</span>
+        <div className="space-y-3.5 mt-1 text-slate-900">
+          <div className="flex items-center justify-between bg-emerald-950 text-emerald-100 px-3.5 py-2 rounded-2xl text-[11px] border border-emerald-700/60">
+            <span>🛡️ Owner Session (15m Auto-Lock)</span>
             <button
               type="button"
               onClick={() => lockAdminSession(false)}
               className="px-2.5 py-1 rounded-lg bg-amber-400 text-slate-900 font-extrabold text-[10px]"
             >
-              🔒 Lock Now
+              🔒 Lock
             </button>
           </div>
 
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5 bg-slate-200 p-1.5 rounded-2xl">
+          <div className="grid grid-cols-2 gap-1.5 bg-slate-200 p-1.5 rounded-2xl">
             <button
               onClick={() => setTab("pending")}
-              className={`py-2 px-2 rounded-xl text-xs font-extrabold transition ${
+              className={`py-2.5 px-2 rounded-xl text-xs font-extrabold transition ${
                 tab === "pending" ? "bg-white text-emerald-800 shadow" : "text-slate-600"
               }`}
             >
@@ -2060,7 +2521,7 @@
             </button>
             <button
               onClick={() => setTab("customers")}
-              className={`py-2 px-2 rounded-xl text-xs font-extrabold transition ${
+              className={`py-2.5 px-2 rounded-xl text-xs font-extrabold transition ${
                 tab === "customers" ? "bg-white text-emerald-800 shadow" : "text-slate-600"
               }`}
             >
@@ -2068,7 +2529,7 @@
             </button>
             <button
               onClick={() => setTab("records")}
-              className={`py-2 px-2 rounded-xl text-xs font-extrabold transition ${
+              className={`py-2.5 px-2 rounded-xl text-xs font-extrabold transition ${
                 tab === "records" ? "bg-emerald-700 text-white shadow" : "text-slate-700 bg-white/60"
               }`}
             >
@@ -2076,7 +2537,7 @@
             </button>
             <button
               onClick={() => setTab("demands")}
-              className={`py-2 px-2 rounded-xl text-xs font-extrabold transition ${
+              className={`py-2.5 px-2 rounded-xl text-xs font-extrabold transition ${
                 tab === "demands" ? "bg-white text-emerald-800 shadow" : "text-slate-600"
               }`}
             >
@@ -2084,7 +2545,6 @@
             </button>
           </div>
 
-          {/* TAB 1: PENDING BILLS */}
           {tab === "pending" && (
             <div className="space-y-4">
               {pendingBills.length === 0 ? (
@@ -2124,7 +2584,7 @@
                                 title: `${b.customerName} • Invoice #${b.billNumber}`
                               })
                             }
-                            className="max-h-64 object-contain cursor-zoom-in"
+                            className="max-h-60 object-contain cursor-zoom-in"
                           />
                           <button
                             type="button"
@@ -2134,17 +2594,17 @@
                                 title: `${b.customerName} • Invoice #${b.billNumber}`
                               })
                             }
-                            className="mt-2 px-3 py-1 rounded-full bg-white/15 hover:bg-white/25 text-white text-[11px] font-bold border border-white/20"
+                            className="mt-2 px-3 py-1.5 rounded-full bg-white/15 active:bg-white/25 text-white text-[11px] font-bold border border-white/20"
                           >
                             🔍 Photo Zoom Karein
                           </button>
                         </div>
                       )}
 
-                      <div className="px-4 py-3 bg-emerald-50/70 border-t border-emerald-100 flex items-center justify-between gap-2">
+                      <div className="px-3.5 py-3 bg-emerald-50/70 border-t border-emerald-100 flex items-center justify-between gap-2">
                         <div>
-                          <p className="text-xs font-bold text-slate-800">⭐ Kitne Stars Dene Hain?</p>
-                          <p className="text-[11px] text-slate-500">₹1000 = 1★, ₹2000 = 2★ (Rice chhodkar)</p>
+                          <p className="text-xs font-bold text-slate-800">⭐ Kitne Stars?</p>
+                          <p className="text-[10px] text-slate-500">₹1000 = 1★ (Excl. Rice)</p>
                         </div>
                         <div className="flex items-center gap-1.5">
                           {[1, 2, 3].map((num) => (
@@ -2152,7 +2612,7 @@
                               key={num}
                               type="button"
                               onClick={() => setStarInputs({ ...starInputs, [b.id]: num })}
-                              className={`px-2.5 py-1.5 rounded-lg text-xs font-bold border ${
+                              className={`px-2.5 py-2 rounded-lg text-xs font-bold border ${
                                 selectedStars === num
                                   ? "bg-amber-400 border-amber-500 text-slate-900 shadow-sm"
                                   : "bg-white border-slate-300 text-slate-600"
@@ -2167,24 +2627,24 @@
                             max="20"
                             value={selectedStars}
                             onChange={(e) => setStarInputs({ ...starInputs, [b.id]: e.target.value })}
-                            className="w-12 text-center py-1.5 border border-slate-300 rounded-lg text-xs font-bold bg-white"
+                            className="w-12 text-center py-1.5 border border-slate-300 rounded-lg font-bold bg-white"
                             title="Custom Stars"
                           />
                         </div>
                       </div>
 
-                      <div className="p-3 grid grid-cols-2 gap-3 bg-slate-50 border-t">
+                      <div className="p-3 grid grid-cols-2 gap-2.5 bg-slate-50 border-t">
                         <button
                           onClick={() => handleReject(b)}
-                          className="py-2.5 rounded-xl border border-red-200 bg-white text-red-600 font-bold text-sm"
+                          className="py-3 rounded-xl border border-red-200 bg-white text-red-600 font-bold text-sm active:scale-95"
                         >
                           ❌ Reject
                         </button>
                         <button
                           onClick={() => handleApprove(b)}
-                          className="py-2.5 rounded-xl bg-emerald-600 text-white font-bold text-sm"
+                          className="py-3 rounded-xl bg-emerald-600 text-white font-bold text-sm active:scale-95"
                         >
-                          ✅ Approve (+{selectedStars} {selectedStars > 1 ? "Stars" : "Star"})
+                          ✅ Approve (+{selectedStars}★)
                         </button>
                       </div>
                     </div>
@@ -2194,7 +2654,6 @@
             </div>
           )}
 
-          {/* TAB 2: CUSTOMERS LIST */}
           {tab === "customers" && (
             <div className="space-y-3">
               <div className="relative">
@@ -2204,12 +2663,12 @@
                   placeholder="🔍 Naam ya mobile number se search karein..."
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
-                  className="w-full pl-3.5 pr-9 py-2.5 bg-white border border-slate-300 rounded-xl text-xs font-medium outline-none focus:ring-2 focus:ring-emerald-500"
+                  className="w-full pl-3.5 pr-9 py-2.5 bg-white border border-slate-300 rounded-xl font-medium outline-none focus:ring-2 focus:ring-emerald-500"
                 />
                 {searchQuery && (
                   <button
                     onClick={() => setSearchQuery("")}
-                    className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 text-xs font-bold"
+                    className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 text-xs font-bold p-1"
                   >
                     ✕
                   </button>
@@ -2222,7 +2681,7 @@
                   className={`px-3 py-1.5 rounded-lg text-xs font-bold ${
                     customerFilter === "all"
                       ? "bg-slate-900 text-white"
-                      : "bg-slate-100 text-slate-600 hover:bg-slate-200"
+                      : "bg-slate-100 text-slate-600"
                   }`}
                 >
                   All ({customers.length})
@@ -2235,7 +2694,7 @@
                       : "bg-emerald-50 text-emerald-800 border border-emerald-200"
                   }`}
                 >
-                  🔔 7-Day Reminder ({reminderDueCount})
+                  🔔 7d Rem ({reminderDueCount})
                 </button>
                 <button
                   onClick={() => setCustomerFilter("near_complete")}
@@ -2245,7 +2704,7 @@
                       : "bg-amber-50 text-amber-800 border border-amber-200"
                   }`}
                 >
-                  ⭐ Near Complete (Desc)
+                  ⭐ Near 5★
                 </button>
                 <button
                   onClick={() => setCustomerFilter("inactive_15")}
@@ -2255,7 +2714,7 @@
                       : "bg-red-50 text-red-700 border border-red-200"
                   }`}
                 >
-                  ⏳ 15+ Days Inactive ({inactiveCount})
+                  ⏳ 15d+ ({inactiveCount})
                 </button>
               </div>
 
@@ -2291,27 +2750,27 @@
                           </span>
                           {remStatus.due ? (
                             <span className="text-[10px] bg-emerald-100 text-emerald-800 font-bold px-2 py-0.5 rounded-full">
-                              🔔 Reminder Due
+                              🔔 Rem Due
                             </span>
                           ) : (
                             <span className="text-[10px] bg-blue-50 text-blue-700 px-2 py-0.5 rounded-full">
-                              Next rem: {remStatus.nextInDays}d
+                              Next: {remStatus.nextInDays}d
                             </span>
                           )}
                           {daysInactive !== null && (
                             daysInactive >= INACTIVE_DAYS_LIMIT ? (
                               <span className="text-[10px] bg-red-100 text-red-700 font-bold px-2 py-0.5 rounded-full">
-                                ⚠️ {daysInactive}d inactive
+                                ⚠️ {daysInactive}d
                               </span>
                             ) : (
                               <span className="text-[10px] bg-slate-100 text-slate-600 px-2 py-0.5 rounded-full">
-                                ⏳ {daysLeft}d left
+                                ⏳ {daysLeft}d
                               </span>
                             )
                           )}
                         </div>
                         <p className="text-xs text-slate-500 mt-1">
-                          {c.phone} • Bills: {c.totalApprovedBills || 0} • Rewards: {c.rewardsEarned || 0}
+                          {c.phone} • Bills: {c.totalApprovedBills || 0} • Gifts: {c.rewardsEarned || 0}
                         </p>
                       </div>
 
@@ -2319,28 +2778,28 @@
                         {c.stars >= STARS_FOR_REWARD && (
                           <button
                             onClick={() => handleRedeem(c)}
-                            className="bg-amber-500 text-white text-[11px] font-bold px-2 py-2 rounded-xl"
+                            className="bg-amber-500 text-white text-[11px] font-bold px-2 py-2.5 rounded-xl active:scale-95"
                           >
                             Redeem
                           </button>
                         )}
                         <button
                           onClick={() => handleOpenCustomerRecords(c.phone)}
-                          className="p-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-300 text-xs font-bold"
+                          className="p-2.5 rounded-xl bg-slate-100 active:bg-slate-200 text-slate-700 border border-slate-300 text-xs font-bold"
                           title="Date-by-Date Bills Dekhein"
                         >
                           🗂️
                         </button>
                         <button
                           onClick={() => handleDirectAddStar(c)}
-                          className="px-2 py-2 rounded-xl bg-amber-100 hover:bg-amber-200 text-amber-900 border border-amber-300 text-xs font-extrabold"
+                          className="px-2 py-2.5 rounded-xl bg-amber-100 active:bg-amber-200 text-amber-900 border border-amber-300 text-xs font-extrabold"
                           title="Direct +1 Star Add Karein"
                         >
                           +1★
                         </button>
                         <button
                           onClick={() => handleSendReminder(c, waMsg)}
-                          className={`px-2 py-2 rounded-xl text-xs font-bold border ${
+                          className={`px-2.5 py-2.5 rounded-xl text-xs font-bold border active:scale-95 ${
                             remStatus.due
                               ? "bg-emerald-600 text-white border-emerald-700 shadow-sm"
                               : "bg-emerald-50 text-emerald-700 border-emerald-200"
@@ -2357,7 +2816,6 @@
             </div>
           )}
 
-          {/* TAB 3: DEDICATED DATE-BY-DATE STORED BILL RECORDS */}
           {tab === "records" && (
             <div className="space-y-3">
               <div className="bg-white rounded-2xl p-4 border shadow-sm space-y-3">
@@ -2374,18 +2832,18 @@
                   <input
                     type="text"
                     maxLength={40}
-                    placeholder="🔍 Customer ka naam ya mobile number likhkar filter karein..."
+                    placeholder="🔍 Customer ka naam ya mobile number..."
                     value={recordSearch}
                     onChange={(e) => setRecordSearch(e.target.value)}
-                    className="w-full px-3.5 py-2 bg-slate-50 border border-slate-300 rounded-xl text-xs font-medium outline-none focus:bg-white focus:border-emerald-500"
+                    className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-300 rounded-xl font-medium outline-none focus:bg-white focus:border-emerald-500"
                   />
 
                   <select
                     value={selectedRecordPhone}
                     onChange={(e) => setSelectedRecordPhone(e.target.value)}
-                    className="w-full px-3.5 py-2.5 bg-white border-2 border-emerald-300 rounded-xl text-xs font-bold text-slate-800 outline-none focus:border-emerald-600"
+                    className="w-full px-3.5 py-3 bg-white border-2 border-emerald-300 rounded-xl font-bold text-slate-800 outline-none focus:border-emerald-600"
                   >
-                    <option value="">-- Yahan Tap Karke Customer Select Karein ({recordSelectableCustomers.length}) --</option>
+                    <option value="">-- Customer Select Karein ({recordSelectableCustomers.length}) --</option>
                     {recordSelectableCustomers.map((c) => (
                       <option key={c.phone} value={c.phone}>
                         {c.name} (+91 {c.phone}) — {c.stars}/{STARS_FOR_REWARD} ★
@@ -2403,7 +2861,7 @@
                           key={c.phone}
                           type="button"
                           onClick={() => setSelectedRecordPhone(c.phone)}
-                          className="px-2.5 py-1.5 rounded-xl bg-emerald-50 hover:bg-emerald-100 text-emerald-900 border border-emerald-200 text-xs font-semibold"
+                          className="px-2.5 py-2 rounded-xl bg-emerald-50 active:bg-emerald-100 text-emerald-900 border border-emerald-200 text-xs font-semibold"
                         >
                           {c.name} ({c.phone.slice(-4)})
                         </button>
@@ -2426,7 +2884,7 @@
                     <button
                       type="button"
                       onClick={() => setSelectedRecordPhone("")}
-                      className="px-3 py-1.5 rounded-xl bg-white/15 hover:bg-white/25 text-xs font-bold"
+                      className="px-3 py-2 rounded-xl bg-white/15 active:bg-white/25 text-xs font-bold"
                     >
                       Change
                     </button>
@@ -2509,7 +2967,7 @@
                                       title: `${selectedRecordCustomer.name} • Invoice #${b.billNumber} (${formatDateTime(b.createdAt)})`
                                     })
                                   }
-                                  className="mt-2 px-3.5 py-1.5 rounded-full bg-amber-400 text-slate-900 text-xs font-extrabold shadow"
+                                  className="mt-2 px-3.5 py-2 rounded-full bg-amber-400 text-slate-900 text-xs font-extrabold shadow active:scale-95"
                                 >
                                   🔍 Full Screen Zoom Karein
                                 </button>
@@ -2529,7 +2987,6 @@
             </div>
           )}
 
-          {/* TAB 4: CUSTOMER ITEM DEMANDS */}
           {tab === "demands" && (
             <div className="space-y-2.5">
               {itemRequests.length === 0 ? (
@@ -2548,14 +3005,14 @@
                     <div className="flex items-center gap-1.5 shrink-0">
                       <button
                         onClick={() => handleNotifyAndCloseDemand(req)}
-                        className="px-3 py-2 rounded-xl bg-emerald-600 text-white text-xs font-bold"
+                        className="px-3 py-2.5 rounded-xl bg-emerald-600 text-white text-xs font-bold active:scale-95"
                         title="WhatsApp par batayein ki samaan aa gaya hai"
                       >
                         💬 Notify
                       </button>
                       <button
                         onClick={() => handleDeleteDemand(req.id)}
-                        className="p-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold"
+                        className="p-2.5 rounded-xl bg-slate-100 active:bg-slate-200 text-slate-700 text-xs font-bold"
                         title="Done / Fulfilled"
                       >
                         ✅
