@@ -15,6 +15,14 @@
 
   <title>Khandelwal Food Mart - Scan & Earn</title>
 
+  <!-- Speed Boost: Preconnect to CDNs & Firebase Servers -->
+  <link rel="preconnect" href="https://www.gstatic.com" crossorigin />
+  <link rel="preconnect" href="https://firestore.googleapis.com" crossorigin />
+  <link rel="preconnect" href="https://identitytoolkit.googleapis.com" crossorigin />
+  <link rel="preconnect" href="https://unpkg.com" crossorigin />
+  <link rel="preconnect" href="https://cdn.tailwindcss.com" crossorigin />
+  <link rel="preload" as="image" href="./logo.png" />
+
   <!-- Enforce HTTPS & Disable Production Debug Logs -->
   <script>
     (function () {
@@ -90,10 +98,62 @@
       0%, 100% { box-shadow: 0 0 10px rgba(251, 191, 36, 0.45); }
       50% { box-shadow: 0 0 22px rgba(251, 191, 36, 0.85); }
     }
+    @keyframes pulseDot {
+      0%, 100% { opacity: 0.35; transform: scale(0.9); }
+      50% { opacity: 1; transform: scale(1.1); }
+    }
     .animate-float { animation: floatSlow 3.6s ease-in-out infinite; }
     .animate-float-rev { animation: floatReverse 4.2s ease-in-out infinite; }
     .animate-pop { animation: popIn 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards; }
     .star-glow { animation: shimmerGlow 2.2s ease-in-out infinite; }
+
+    /* Instant Splash Screen (Renders in 0ms before React boots) */
+    .kfm-splash {
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      background: linear-gradient(160deg, #065f46 0%, #0f766e 55%, #064e3b 100%);
+      color: #ffffff;
+      text-align: center;
+      padding: 24px;
+      font-family: system-ui, -apple-system, sans-serif;
+    }
+    .kfm-splash img {
+      width: 84px;
+      height: 84px;
+      border-radius: 22px;
+      border: 2px solid rgba(252, 211, 77, 0.7);
+      box-shadow: 0 12px 28px rgba(0, 0, 0, 0.28);
+      margin-bottom: 14px;
+      object-fit: cover;
+    }
+    .kfm-splash-title {
+      font-size: 18px;
+      font-weight: 800;
+      letter-spacing: 0.04em;
+    }
+    .kfm-splash-sub {
+      font-size: 12px;
+      color: #fde68a;
+      font-weight: 600;
+      margin-top: 4px;
+    }
+    .kfm-splash-dots {
+      display: flex;
+      gap: 6px;
+      margin-top: 18px;
+    }
+    .kfm-splash-dots span {
+      width: 8px;
+      height: 8px;
+      border-radius: 999px;
+      background: #fbbf24;
+      animation: pulseDot 1s infinite ease-in-out;
+    }
+    .kfm-splash-dots span:nth-child(2) { animation-delay: 0.2s; }
+    .kfm-splash-dots span:nth-child(3) { animation-delay: 0.4s; }
 
     /* Mobile-First Festive Grocery & Star Background */
     .festive-bg {
@@ -108,12 +168,20 @@
   </style>
 </head>
 <body class="festive-bg text-slate-900 font-sans min-h-screen relative overflow-x-hidden">
-  <div id="root"></div>
+  <!-- Instant Splash Screen until React mounts -->
+  <div id="root">
+    <div class="kfm-splash">
+      <img src="./logo.png" alt="KFM Logo" onerror="this.style.display='none'" />
+      <div class="kfm-splash-title">KHANDELWAL FOOD MART</div>
+      <div class="kfm-splash-sub">✨ Scan &amp; Earn Star Club</div>
+      <div class="kfm-splash-dots"><span></span><span></span><span></span></div>
+    </div>
+  </div>
 
   <script type="text/babel" data-type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
     import {
-      getAuth, signInAnonymously, signInWithEmailAndPassword, signOut
+      getAuth, signInAnonymously, signInWithEmailAndPassword, signOut, onAuthStateChanged
     } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
     import {
       getFirestore, doc, getDoc, setDoc, updateDoc, deleteDoc,
@@ -124,7 +192,7 @@
     const { useState, useEffect, useRef } = React;
 
     // ==========================================
-    // 1. FIREBASE CONFIG (Connected + Server Auth)
+    // 1. FIREBASE CONFIG (Connected + Fast Parallel Auth)
     // ==========================================
     const firebaseConfig = {
       apiKey: "AIzaSyDqy3SmMrTyO1glyairloHUnVso306Ow2o",
@@ -139,12 +207,35 @@
     const auth = getAuth(app);
     const db = getFirestore(app);
 
-    // Ensure background Firebase Auth token is active for customer operations
-    const ensureCustomerAuth = async () => {
-      if (auth.currentUser) return auth.currentUser;
-      const cred = await signInAnonymously(auth);
-      return cred.user;
+    // Single shared promise so auth never triggers duplicate round-trips
+    let authInitPromise = null;
+    const ensureCustomerAuth = () => {
+      if (auth.currentUser) return Promise.resolve(auth.currentUser);
+      if (!authInitPromise) {
+        authInitPromise = new Promise((resolve, reject) => {
+          const unsub = onAuthStateChanged(auth, async (user) => {
+            if (user) {
+              unsub();
+              resolve(user);
+            } else {
+              try {
+                const cred = await signInAnonymously(auth);
+                unsub();
+                resolve(cred.user);
+              } catch (err) {
+                unsub();
+                authInitPromise = null;
+                reject(err);
+              }
+            }
+          });
+        });
+      }
+      return authInitPromise;
     };
+
+    // Start warming up Firebase Auth immediately on script load
+    ensureCustomerAuth().catch(() => {});
 
     // Check if current session is authenticated as Owner (Email/Password)
     const isCurrentUserOwner = () => {
@@ -192,7 +283,6 @@
 
     const verifyCsrfToken = (token) => Boolean(token && token === SESSION_CSRF_TOKEN);
 
-    // Strict XSS Input Sanitizer
     const sanitizeText = (str, maxLen = 60) => {
       if (typeof str !== "string") return "";
       return str
@@ -203,16 +293,13 @@
         .slice(0, maxLen);
     };
 
-    // Validate Safe Image Data URL before rendering
     const isSafeImageDataUrl = (url) => {
       if (typeof url !== "string") return false;
       return /^data:image\/(jpeg|jpg|png|webp);base64,[A-Za-z0-9+/=]+$/.test(url);
     };
 
-    // Validate Indian 10-digit Phone Number
     const isValidIndianPhone = (phone) => /^[6-9]\d{9}$/.test(phone);
 
-    // Safe External WhatsApp Opener
     const openSafeWhatsApp = (phone, message) => {
       const clean = String(phone || "").replace(/\D/g, "").slice(-10);
       if (!isValidIndianPhone(clean)) return;
@@ -220,7 +307,34 @@
       window.open(url, "_blank", "noopener,noreferrer");
     };
 
-    // Reusable Store Logo Component (uses ./logo.png with automatic fallback)
+    // Instant Local Cache Helpers for 0ms Returning Customer Load
+    const readCachedCustomer = (phone) => {
+      try {
+        if (!isValidIndianPhone(phone)) return null;
+        const raw = localStorage.getItem(`kfm_cust_cache_${phone}`);
+        return raw ? JSON.parse(raw) : null;
+      } catch (e) {
+        return null;
+      }
+    };
+
+    const writeCachedCustomer = (phone, data) => {
+      try {
+        if (!isValidIndianPhone(phone) || !data) return;
+        localStorage.setItem(
+          `kfm_cust_cache_${phone}`,
+          JSON.stringify({
+            phone: data.phone,
+            name: data.name,
+            stars: data.stars || 0,
+            totalApprovedBills: data.totalApprovedBills || 0,
+            rewardsEarned: data.rewardsEarned || 0
+          })
+        );
+      } catch (e) {}
+    };
+
+    // Reusable Store Logo Component
     function StoreLogo({ className = "w-10 h-10" }) {
       const [imgError, setImgError] = useState(false);
 
@@ -236,6 +350,7 @@
         <img
           src="./logo.png"
           alt="KFM Loyalty Logo"
+          decoding="async"
           onError={() => setImgError(true)}
           className={`${className} rounded-xl object-cover shadow-md border border-amber-300/60 bg-emerald-950 shrink-0`}
         />
@@ -281,7 +396,6 @@
       });
     };
 
-    // Helper: Timestamp to milliseconds
     const toMillisSafe = (ts) => {
       if (!ts) return null;
       if (ts.toMillis) return ts.toMillis();
@@ -289,7 +403,6 @@
       return null;
     };
 
-    // Helper: Format Date & Time cleanly
     const formatDateTime = (ts) => {
       const ms = toMillisSafe(ts);
       if (!ms) return "Date pending";
@@ -307,14 +420,12 @@
       return `${datePart} • ${timePart}`;
     };
 
-    // Helper: Days since timestamp
     const getDaysSince = (ts) => {
       const ms = toMillisSafe(ts);
       if (!ms) return null;
       return Math.floor((Date.now() - ms) / (1000 * 60 * 60 * 24));
     };
 
-    // Helper: Check if 7-day reminder is due
     const getReminderStatus = (cust) => {
       const lastActMs = toMillisSafe(cust.lastActivityAt) || 0;
       const lastRemMs = toMillisSafe(cust.lastReminderAt) || 0;
@@ -345,7 +456,6 @@
           onClick={onClose}
           className="fixed inset-0 bg-black/95 z-50 flex flex-col"
         >
-          {/* Top Zoom Control Bar */}
           <div
             onClick={(e) => e.stopPropagation()}
             className="flex items-center justify-between px-4 py-3 bg-slate-900/90 border-b border-slate-700 text-white shrink-0"
@@ -374,7 +484,6 @@
             </div>
           </div>
 
-          {/* Scrollable / Zoomable Image Container */}
           <div
             onClick={(e) => e.stopPropagation()}
             className={`flex-1 overflow-auto flex ${
@@ -439,7 +548,6 @@
       const tapCountRef = useRef(0);
       const tapTimerRef = useRef(null);
 
-      // Triple Tap on Store Title/Logo to open Owner Login
       const handleTitleTap = () => {
         tapCountRef.current += 1;
         if (tapTimerRef.current) clearTimeout(tapTimerRef.current);
@@ -487,15 +595,18 @@
     }
 
     // ==========================================
-    // CUSTOMER PORTAL (BACKGROUND FIREBASE AUTH + STRICT RULES)
+    // CUSTOMER PORTAL (0MS INSTANT CACHE + PARALLEL SYNC)
     // ==========================================
     function CustomerPortal() {
-      const [phone, setPhone] = useState(() => {
+      const initialPhone = (() => {
         const saved = localStorage.getItem("kfm_phone") || "";
         return isValidIndianPhone(saved) ? saved : "";
-      });
+      })();
+
+      const [phone, setPhone] = useState(initialPhone);
       const [name, setName] = useState("");
-      const [customer, setCustomer] = useState(null);
+      // Load cached Star Card immediately in 0ms for returning users
+      const [customer, setCustomer] = useState(() => readCachedCustomer(initialPhone));
       const [isNewUser, setIsNewUser] = useState(false);
       const [loading, setLoading] = useState(false);
 
@@ -520,20 +631,22 @@
       // Joyful Attention Popups
       const [activePopup, setActivePopup] = useState(null);
       const shownEventsRef = useRef(new Set());
+      const unsubRefs = useRef([]);
 
       useEffect(() => {
-        ensureCustomerAuth()
-          .then(() => {
-            if (isValidIndianPhone(phone)) loadCustomer(phone);
-          })
-          .catch(() => {});
+        if (isValidIndianPhone(phone)) {
+          loadCustomer(phone, Boolean(readCachedCustomer(phone)));
+        }
 
         const handleBeforeInstall = (e) => {
           e.preventDefault();
           setDeferredPrompt(e);
         };
         window.addEventListener("beforeinstallprompt", handleBeforeInstall);
-        return () => window.removeEventListener("beforeinstallprompt", handleBeforeInstall);
+        return () => {
+          window.removeEventListener("beforeinstallprompt", handleBeforeInstall);
+          unsubRefs.current.forEach((fn) => fn && fn());
+        };
       }, []);
 
       const handleSaveHomeScreen = async () => {
@@ -550,15 +663,18 @@
         }
       };
 
-      const loadCustomer = async (cleanPhone) => {
+      const loadCustomer = async (cleanPhone, silentBackground = false) => {
         if (!isValidIndianPhone(cleanPhone)) return;
-        setLoading(true);
+        if (!silentBackground) setLoading(true);
+
         try {
           await ensureCustomerAuth();
           const custRef = doc(db, "customers", cleanPhone);
           const snap = await getDoc(custRef);
 
           if (!snap.exists()) {
+            localStorage.removeItem(`kfm_cust_cache_${cleanPhone}`);
+            setCustomer(null);
             setIsNewUser(true);
             setLoading(false);
             return;
@@ -566,11 +682,21 @@
 
           localStorage.setItem("kfm_phone", cleanPhone);
           setIsNewUser(false);
+          const initialData = snap.data();
+          setCustomer(initialData);
+          writeCachedCustomer(cleanPhone, initialData);
+          setLoading(false);
 
-          onSnapshot(custRef, (d) => {
+          // Clean up any older listeners before attaching new ones
+          unsubRefs.current.forEach((fn) => fn && fn());
+          unsubRefs.current = [];
+
+          // Parallel real-time listeners for customer doc + bill history
+          const unsubCust = onSnapshot(custRef, (d) => {
             if (d.exists()) {
               const data = d.data();
               setCustomer(data);
+              writeCachedCustomer(cleanPhone, data);
 
               const rewardKey = `reward_unlocked_${cleanPhone}_${data.stars}_${data.rewardsEarned || 0}`;
               if (
@@ -588,12 +714,13 @@
               }
             } else {
               localStorage.removeItem("kfm_phone");
+              localStorage.removeItem(`kfm_cust_cache_${cleanPhone}`);
               setCustomer(null);
             }
           });
 
           const q = query(collection(db, "bill_submissions"), where("phone", "==", cleanPhone));
-          onSnapshot(q, (qSnap) => {
+          const unsubBills = onSnapshot(q, (qSnap) => {
             const list = [];
             qSnap.forEach((d) => list.push({ id: d.id, ...d.data() }));
             list.sort((a, b) => (b.createdAt?.seconds || 0) - (a.createdAt?.seconds || 0));
@@ -618,10 +745,14 @@
               }
             }
           });
+
+          unsubRefs.current = [unsubCust, unsubBills];
         } catch (err) {
-          alert("Firebase Auth/Rules check karein: Anonymous sign-in enable hona zaroori hai.");
+          setLoading(false);
+          if (!silentBackground) {
+            alert("Firebase Auth/Rules check karein: Anonymous sign-in enable hona zaroori hai.");
+          }
         }
-        setLoading(false);
       };
 
       const handleLogin = async (e) => {
@@ -641,14 +772,16 @@
           setLoading(true);
           try {
             await ensureCustomerAuth();
-            await setDoc(doc(db, "customers", cleanPhone), {
+            const newProfile = {
               phone: cleanPhone,
               name: cleanName,
               stars: 0,
               totalApprovedBills: 0,
               rewardsEarned: 0,
               lastActivityAt: serverTimestamp()
-            });
+            };
+            await setDoc(doc(db, "customers", cleanPhone), newProfile);
+            writeCachedCustomer(cleanPhone, newProfile);
             await loadCustomer(cleanPhone);
           } catch (err) {
             setLoading(false);
@@ -677,7 +810,6 @@
         e.preventDefault();
         if (!verifyCsrfToken(SESSION_CSRF_TOKEN)) return;
 
-        // Rate Limit Check (30s cooldown between uploads)
         const lastUploadMs = Number(localStorage.getItem("kfm_last_bill_upload_ms") || 0);
         const elapsed = Date.now() - lastUploadMs;
         if (elapsed < BILL_COOLDOWN_MS) {
@@ -685,7 +817,6 @@
           return setMsg({ type: "err", text: `⏳ Kripya ${waitSec} second ruk kar agla bill upload karein.` });
         }
 
-        // Strict Form Validation
         const cleanBillNo = sanitizeText(billNumber, 20)
           .toUpperCase()
           .replace(/[^A-Z0-9\-\/]/g, "");
@@ -750,7 +881,6 @@
         setUploading(false);
       };
 
-      // Missing Item Request Submit
       const handleItemRequestSubmit = async (e) => {
         e.preventDefault();
         if (!verifyCsrfToken(SESSION_CSRF_TOKEN)) return;
@@ -784,7 +914,6 @@
         setRequestSending(false);
       };
 
-      // Hinglish Rice Exclusion Notice Box
       const RiceExclusionNotice = () => (
         <div className="bg-amber-50/95 border-2 border-amber-300 rounded-2xl p-3 flex items-start gap-2.5 shadow-sm">
           <span className="text-lg leading-none mt-0.5 shrink-0">📢</span>
@@ -804,7 +933,6 @@
       if (!customer) {
         return (
           <div className="space-y-3.5 mt-1">
-            {/* Hero Welcome Card */}
             <div className="bg-gradient-to-br from-emerald-800 via-teal-700 to-amber-500 text-white rounded-3xl p-5 shadow-xl relative overflow-hidden">
               <div className="absolute -right-4 -top-4 text-6xl opacity-20 select-none animate-float">🎁</div>
               <div className="flex items-center gap-3 mb-2.5">
@@ -822,7 +950,6 @@
                 Bas <strong>{STARS_FOR_REWARD} Stars</strong> poore karein aur jeetein exciting Gifts & Offers!
               </p>
 
-              {/* Visual 3-Step Strip */}
               <div className="grid grid-cols-3 gap-2 mt-3.5">
                 <div className="bg-white/15 backdrop-blur-sm rounded-2xl p-2 text-center border border-white/20">
                   <div className="text-lg">🛍️</div>
@@ -839,10 +966,8 @@
               </div>
             </div>
 
-            {/* Hinglish Rice Exclusion Notice */}
             <RiceExclusionNotice />
 
-            {/* Login Form Card */}
             <div className="bg-white/95 backdrop-blur-md rounded-3xl shadow-lg border border-white p-5">
               <h3 className="text-base font-extrabold text-slate-800 text-center">
                 Apna Star Card Kholne Ke Liye Number Dalein
@@ -1086,7 +1211,9 @@
               </div>
               <button
                 onClick={() => {
+                  unsubRefs.current.forEach((fn) => fn && fn());
                   localStorage.removeItem("kfm_phone");
+                  localStorage.removeItem(`kfm_cust_cache_${customer.phone}`);
                   setCustomer(null);
                   setPhone("");
                 }}
@@ -1096,7 +1223,6 @@
               </button>
             </div>
 
-            {/* Interactive Star Slots + Progress Bar */}
             <div className="my-3.5 bg-black/25 backdrop-blur-sm rounded-2xl p-3.5 border border-white/10">
               <div className="flex justify-between items-center text-xs mb-2">
                 <span className="text-emerald-100 font-semibold">Aapke Golden Stars</span>
@@ -1137,7 +1263,6 @@
               </div>
             </div>
 
-            {/* Status Banner */}
             <div className="bg-gradient-to-r from-amber-400/20 to-emerald-400/20 border border-amber-300/30 rounded-2xl p-2.5 text-xs flex items-center gap-2">
               <span className="text-lg shrink-0">{rewardReady ? "🎉" : "🎁"}</span>
               {rewardReady ? (
@@ -1152,10 +1277,8 @@
             </div>
           </div>
 
-          {/* Hinglish Rice Exclusion Notice */}
           <RiceExclusionNotice />
 
-          {/* Pending Bill Live Alert Pill */}
           {pendingCount > 0 && (
             <div className="bg-amber-100/95 backdrop-blur-sm border border-amber-300 text-amber-900 rounded-2xl px-3.5 py-2.5 flex items-center justify-between text-xs shadow-sm">
               <div className="flex items-center gap-2">
@@ -1170,7 +1293,7 @@
             </div>
           )}
 
-          {/* BILL UPLOAD CARD + SMART BILL BOOSTER NUDGE */}
+          {/* BILL UPLOAD CARD */}
           <div className="bg-white/95 backdrop-blur-md rounded-3xl shadow-lg border border-white p-5">
             <div className="flex items-center gap-2.5">
               <div className="w-10 h-10 rounded-2xl bg-gradient-to-br from-amber-400 to-orange-400 text-slate-900 flex items-center justify-center text-xl shadow-sm shrink-0">
@@ -1245,7 +1368,6 @@
                 </div>
               </div>
 
-              {/* Smart Bill Booster Nudge */}
               {numericAmt >= MIN_BILL_AMOUNT && numericAmt < 2000 && (
                 <div className="bg-amber-50 border border-amber-300 rounded-2xl px-3 py-2.5 text-xs text-amber-900 flex items-start gap-2 animate-pop">
                   <span className="text-base leading-none mt-0.5">💡</span>
@@ -1439,7 +1561,7 @@
       const [authError, setAuthError] = useState("");
       const lastAdminTouchRef = useRef(Date.now());
 
-      const [tab, setTab] = useState("pending"); // pending | customers | records | demands
+      const [tab, setTab] = useState("pending");
       const [customerFilter, setCustomerFilter] = useState("all");
       const [searchQuery, setSearchQuery] = useState("");
       const [pendingBills, setPendingBills] = useState([]);
@@ -1459,14 +1581,14 @@
         setOwnerPassword("");
         try {
           await signOut(auth);
-          await signInAnonymously(auth);
+          authInitPromise = null;
+          await ensureCustomerAuth();
         } catch (e) {}
         if (showIdleAlert) {
           alert("Security Timeout: 15 minute inactivity ke baad Owner Dashboard auto-lock ho gaya hai.");
         }
       };
 
-      // 15-minute inactivity auto-expiry
       useEffect(() => {
         const timer = setInterval(() => {
           if (unlocked && Date.now() - lastAdminTouchRef.current > ADMIN_IDLE_TIMEOUT_MS) {
@@ -1519,7 +1641,6 @@
         };
       }, [unlocked]);
 
-      // Load date-by-date bills for selected customer in Bill Records tab
       useEffect(() => {
         if (!unlocked || !selectedRecordPhone) {
           setCustomerRecordBills([]);
@@ -1621,7 +1742,6 @@
         });
       };
 
-      // Direct +1 Star Entry for walk-in customers
       const handleDirectAddStar = async (cust) => {
         if (!verifyCsrfToken(SESSION_CSRF_TOKEN)) return;
         if (!window.confirm(`"${cust.name}" (+91 ${cust.phone}) ke card mein direct +1 Star add karein?`)) return;
@@ -1741,7 +1861,6 @@
         );
       }
 
-      // Compute Filter Counts & Search
       const reminderDueCount = customers.filter((c) => getReminderStatus(c).due).length;
       const inactiveCount = customers.filter((c) => {
         const d = getDaysSince(c.lastActivityAt);
@@ -1791,7 +1910,6 @@
 
       return (
         <div className="space-y-4 mt-1">
-          {/* Security Session Status Bar */}
           <div className="flex items-center justify-between bg-emerald-950 text-emerald-100 px-3.5 py-2 rounded-2xl text-[11px]">
             <span>🛡️ Server-Verified Owner Session (15m Auto-Lock)</span>
             <button
@@ -1803,7 +1921,6 @@
             </button>
           </div>
 
-          {/* 4-Button Navigation Bar including Dedicated Bill Records Button */}
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5 bg-slate-200 p-1.5 rounded-2xl">
             <button
               onClick={() => setTab("pending")}
@@ -1871,6 +1988,8 @@
                         <div className="bg-slate-900 flex flex-col items-center p-2 relative">
                           <img
                             src={b.imageBase64}
+                            loading="lazy"
+                            decoding="async"
                             onClick={() =>
                               setZoomData({
                                 src: b.imageBase64,
@@ -1894,7 +2013,6 @@
                         </div>
                       )}
 
-                      {/* Open Star Selection Bar */}
                       <div className="px-4 py-3 bg-emerald-50/70 border-t border-emerald-100 flex items-center justify-between gap-2">
                         <div>
                           <p className="text-xs font-bold text-slate-800">⭐ Kitne Stars Dene Hain?</p>
@@ -1951,7 +2069,6 @@
           {/* TAB 2: CUSTOMERS LIST */}
           {tab === "customers" && (
             <div className="space-y-3">
-              {/* Instant Search Box */}
               <div className="relative">
                 <input
                   type="text"
@@ -1971,7 +2088,6 @@
                 )}
               </div>
 
-              {/* Filter Buttons */}
               <div className="flex flex-wrap gap-1.5 bg-white p-2 rounded-xl border border-slate-200">
                 <button
                   onClick={() => setCustomerFilter("all")}
@@ -2116,7 +2232,6 @@
           {/* TAB 3: DEDICATED DATE-BY-DATE STORED BILL RECORDS */}
           {tab === "records" && (
             <div className="space-y-3">
-              {/* Customer Selector Card */}
               <div className="bg-white rounded-2xl p-4 border shadow-sm space-y-3">
                 <div>
                   <h3 className="font-extrabold text-sm text-slate-800">
@@ -2127,7 +2242,6 @@
                   </p>
                 </div>
 
-                {/* Search & Select Dropdown */}
                 <div className="space-y-2">
                   <input
                     type="text"
@@ -2152,7 +2266,6 @@
                   </select>
                 </div>
 
-                {/* Quick Pick Pills when no customer is selected yet */}
                 {!selectedRecordPhone && recordSelectableCustomers.length > 0 && (
                   <div className="pt-1">
                     <p className="text-[10px] font-bold text-slate-400 uppercase mb-1.5">Ya neeche se tap karein:</p>
@@ -2172,10 +2285,8 @@
                 )}
               </div>
 
-              {/* Selected Customer Date-by-Date Bill List */}
               {selectedRecordCustomer && (
                 <div className="space-y-3">
-                  {/* Customer Summary Header */}
                   <div className="bg-gradient-to-r from-emerald-800 to-teal-700 text-white rounded-2xl p-4 flex items-center justify-between">
                     <div>
                       <p className="text-[10px] uppercase tracking-wider text-amber-300 font-bold">Selected Customer</p>
@@ -2247,11 +2358,12 @@
                               </span>
                             </div>
 
-                            {/* Stored Bill Photo with Zoom */}
                             {isSafeImageDataUrl(b.imageBase64) ? (
                               <div className="bg-slate-900 p-2.5 flex flex-col items-center">
                                 <img
                                   src={b.imageBase64}
+                                  loading="lazy"
+                                  decoding="async"
                                   onClick={() =>
                                     setZoomData({
                                       src: b.imageBase64,
