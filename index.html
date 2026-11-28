@@ -207,7 +207,6 @@
     const auth = getAuth(app);
     const db = getFirestore(app);
 
-    // Single shared promise so auth never triggers duplicate round-trips
     let authInitPromise = null;
     const ensureCustomerAuth = () => {
       if (auth.currentUser) return Promise.resolve(auth.currentUser);
@@ -234,10 +233,8 @@
       return authInitPromise;
     };
 
-    // Start warming up Firebase Auth immediately on script load
     ensureCustomerAuth().catch(() => {});
 
-    // Check if current session is authenticated as Owner (Email/Password)
     const isCurrentUserOwner = () => {
       const user = auth.currentUser;
       if (!user || user.isAnonymous) return false;
@@ -254,14 +251,13 @@
     const MAX_BILL_AMOUNT = 500000;
     const STARS_FOR_REWARD = 5;
 
-    const ADMIN_IDLE_TIMEOUT_MS = 15 * 60 * 1000; // 15-minute auto session lock
+    const ADMIN_IDLE_TIMEOUT_MS = 15 * 60 * 1000;
 
-    // Upload & Rate-Limit Rules
     const ALLOWED_IMAGE_TYPES = ["image/jpeg", "image/jpg", "image/png", "image/webp"];
-    const MAX_RAW_FILE_BYTES = 8 * 1024 * 1024;   // 8 MB max raw upload
-    const MAX_STORED_DATAURL_CHARS = 650000;      // ~480 KB max compressed image
-    const BILL_COOLDOWN_MS = 30 * 1000;           // 30s between bill uploads
-    const DEMAND_COOLDOWN_MS = 20 * 1000;         // 20s between item requests
+    const MAX_RAW_FILE_BYTES = 8 * 1024 * 1024;
+    const MAX_STORED_DATAURL_CHARS = 650000;
+    const BILL_COOLDOWN_MS = 30 * 1000;
+    const DEMAND_COOLDOWN_MS = 20 * 1000;
 
     const INACTIVE_DAYS_LIMIT = 15;
     const REMINDER_DAYS_CYCLE = 7;
@@ -307,7 +303,6 @@
       window.open(url, "_blank", "noopener,noreferrer");
     };
 
-    // Instant Local Cache Helpers for 0ms Returning Customer Load
     const readCachedCustomer = (phone) => {
       try {
         if (!isValidIndianPhone(phone)) return null;
@@ -334,7 +329,6 @@
       } catch (e) {}
     };
 
-    // Reusable Store Logo Component
     function StoreLogo({ className = "w-10 h-10" }) {
       const [imgError, setImgError] = useState(false);
 
@@ -357,7 +351,6 @@
       );
     }
 
-    // Secure Image Validator & Compressor
     const compressBillImage = (file) => {
       return new Promise((resolve, reject) => {
         if (!file || !ALLOWED_IMAGE_TYPES.includes(file.type)) {
@@ -540,13 +533,70 @@
     }
 
     // ==========================================
-    // MAIN APP
+    // MAIN APP (WITH SMART BACK NAVIGATION)
     // ==========================================
     function App() {
       const isAdminUrl = new URLSearchParams(window.location.search).get("admin") === "true";
       const [mode, setMode] = useState(isAdminUrl ? "admin" : "customer");
+      const [backToast, setBackToast] = useState("");
       const tapCountRef = useRef(0);
       const tapTimerRef = useRef(null);
+      const lastBackPressRef = useRef(0);
+      const ignoreNextPopRef = useRef(false);
+
+      // Keep a history guard entry so Back button doesn't abruptly close the app on first press
+      useEffect(() => {
+        try {
+          if (!window.history.state || !window.history.state.kfmGuard) {
+            window.history.replaceState({ kfmGuard: true }, "");
+            window.history.pushState({ kfmGuard: true, step: 1 }, "");
+          }
+        } catch (e) {}
+
+        const handlePopState = () => {
+          if (ignoreNextPopRef.current) {
+            ignoreNextPopRef.current = false;
+            return;
+          }
+
+          // Dispatch custom back event to portals/modals first
+          const backEvent = new CustomEvent("kfm:backbutton", { cancelable: true, detail: { handled: false } });
+          window.dispatchEvent(backEvent);
+
+          if (backEvent.detail.handled) {
+            try {
+              window.history.pushState({ kfmGuard: true, step: 1 }, "");
+            } catch (e) {}
+            return;
+          }
+
+          // If in Admin view, go back to Customer view first
+          if (mode === "admin") {
+            setMode("customer");
+            try {
+              window.history.pushState({ kfmGuard: true, step: 1 }, "");
+            } catch (e) {}
+            return;
+          }
+
+          // Double-Back-To-Exit guard so accidental single press doesn't close the site
+          const now = Date.now();
+          if (now - lastBackPressRef.current < 2000) {
+            ignoreNextPopRef.current = true;
+            window.history.back();
+          } else {
+            lastBackPressRef.current = now;
+            setBackToast("Ek baar aur Back dabayein site band karne ke liye");
+            setTimeout(() => setBackToast(""), 2000);
+            try {
+              window.history.pushState({ kfmGuard: true, step: 1 }, "");
+            } catch (e) {}
+          }
+        };
+
+        window.addEventListener("popstate", handlePopState);
+        return () => window.removeEventListener("popstate", handlePopState);
+      }, [mode]);
 
       const handleTitleTap = () => {
         tapCountRef.current += 1;
@@ -590,12 +640,18 @@
           <main className={`${mode === "customer" ? "max-w-md" : "max-w-xl"} mx-auto px-3.5 py-3 relative z-10`}>
             {mode === "customer" ? <CustomerPortal /> : <AdminPortal />}
           </main>
+
+          {backToast && (
+            <div className="fixed bottom-5 left-1/2 -translate-x-1/2 bg-slate-900/95 text-white text-xs font-bold px-4 py-2.5 rounded-full shadow-xl z-50 border border-slate-700 whitespace-nowrap animate-pop">
+              {backToast}
+            </div>
+          )}
         </div>
       );
     }
 
     // ==========================================
-    // CUSTOMER PORTAL (0MS INSTANT CACHE + PARALLEL SYNC)
+    // CUSTOMER PORTAL (0MS INSTANT CACHE + SMART BACK STEP)
     // ==========================================
     function CustomerPortal() {
       const initialPhone = (() => {
@@ -605,7 +661,6 @@
 
       const [phone, setPhone] = useState(initialPhone);
       const [name, setName] = useState("");
-      // Load cached Star Card immediately in 0ms for returning users
       const [customer, setCustomer] = useState(() => readCachedCustomer(initialPhone));
       const [isNewUser, setIsNewUser] = useState(false);
       const [loading, setLoading] = useState(false);
@@ -632,6 +687,41 @@
       const [activePopup, setActivePopup] = useState(null);
       const shownEventsRef = useRef(new Set());
       const unsubRefs = useRef([]);
+
+      const goBackToNumberScreen = () => {
+        unsubRefs.current.forEach((fn) => fn && fn());
+        unsubRefs.current = [];
+        localStorage.removeItem("kfm_phone");
+        if (customer?.phone) {
+          localStorage.removeItem(`kfm_cust_cache_${customer.phone}`);
+        }
+        setCustomer(null);
+        setIsNewUser(false);
+        setMsg(null);
+      };
+
+      // Handle Android/Browser Back button inside CustomerPortal
+      useEffect(() => {
+        const onBackBtn = (e) => {
+          if (zoomBillData) {
+            e.detail.handled = true;
+            setZoomBillData(null);
+          } else if (activePopup) {
+            e.detail.handled = true;
+            setActivePopup(null);
+          } else if (showHomeScreenModal) {
+            e.detail.handled = true;
+            setShowHomeScreenModal(false);
+          } else if (!customer && isNewUser) {
+            e.detail.handled = true;
+            setIsNewUser(false);
+            setName("");
+          }
+        };
+
+        window.addEventListener("kfm:backbutton", onBackBtn);
+        return () => window.removeEventListener("kfm:backbutton", onBackBtn);
+      }, [zoomBillData, activePopup, showHomeScreenModal, customer, isNewUser]);
 
       useEffect(() => {
         if (isValidIndianPhone(phone)) {
@@ -687,11 +777,9 @@
           writeCachedCustomer(cleanPhone, initialData);
           setLoading(false);
 
-          // Clean up any older listeners before attaching new ones
           unsubRefs.current.forEach((fn) => fn && fn());
           unsubRefs.current = [];
 
-          // Parallel real-time listeners for customer doc + bill history
           const unsubCust = onSnapshot(custRef, (d) => {
             if (d.exists()) {
               const data = d.data();
@@ -933,6 +1021,19 @@
       if (!customer) {
         return (
           <div className="space-y-3.5 mt-1">
+            {isNewUser && (
+              <button
+                type="button"
+                onClick={() => {
+                  setIsNewUser(false);
+                  setName("");
+                }}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-white/95 border border-emerald-200 text-xs font-extrabold text-emerald-800 shadow-sm"
+              >
+                ← Number Badlein
+              </button>
+            )}
+
             <div className="bg-gradient-to-br from-emerald-800 via-teal-700 to-amber-500 text-white rounded-3xl p-5 shadow-xl relative overflow-hidden">
               <div className="absolute -right-4 -top-4 text-6xl opacity-20 select-none animate-float">🎁</div>
               <div className="flex items-center gap-3 mb-2.5">
@@ -1031,6 +1132,20 @@
 
       return (
         <div className="space-y-4">
+          {/* Quick Back to Number / Welcome Bar */}
+          <div className="flex items-center justify-between px-1">
+            <button
+              type="button"
+              onClick={goBackToNumberScreen}
+              className="inline-flex items-center gap-1 text-xs font-extrabold text-emerald-900 bg-white/90 hover:bg-white px-3 py-1.5 rounded-xl border border-emerald-200 shadow-sm"
+            >
+              ← Number / Welcome Screen
+            </button>
+            <span className="text-[10px] font-semibold text-slate-500">
+              Card Saved
+            </span>
+          </div>
+
           {/* POPUP MODAL FOR IMPORTANT UPDATES */}
           {activePopup && (
             <div
@@ -1210,13 +1325,7 @@
                 </div>
               </div>
               <button
-                onClick={() => {
-                  unsubRefs.current.forEach((fn) => fn && fn());
-                  localStorage.removeItem("kfm_phone");
-                  localStorage.removeItem(`kfm_cust_cache_${customer.phone}`);
-                  setCustomer(null);
-                  setPhone("");
-                }}
+                onClick={goBackToNumberScreen}
                 className="text-xs bg-white/15 hover:bg-white/25 px-3 py-1.5 rounded-xl font-semibold backdrop-blur-sm"
               >
                 Change
@@ -1551,7 +1660,7 @@
     }
 
     // ==========================================
-    // ADMIN PORTAL (FIREBASE OWNER EMAIL/PASSWORD AUTH + 15-MIN SESSION EXPIRY)
+    // ADMIN PORTAL (FIREBASE OWNER EMAIL/PASSWORD AUTH + SMART BACK STEP)
     // ==========================================
     function AdminPortal() {
       const [unlocked, setUnlocked] = useState(() => isCurrentUserOwner());
@@ -1588,6 +1697,25 @@
           alert("Security Timeout: 15 minute inactivity ke baad Owner Dashboard auto-lock ho gaya hai.");
         }
       };
+
+      // Handle Back button inside AdminPortal before exiting to Customer View
+      useEffect(() => {
+        const onAdminBack = (e) => {
+          if (zoomData) {
+            e.detail.handled = true;
+            setZoomData(null);
+          } else if (unlocked && tab === "records" && selectedRecordPhone) {
+            e.detail.handled = true;
+            setSelectedRecordPhone("");
+          } else if (unlocked && tab !== "pending") {
+            e.detail.handled = true;
+            setTab("pending");
+          }
+        };
+
+        window.addEventListener("kfm:backbutton", onAdminBack);
+        return () => window.removeEventListener("kfm:backbutton", onAdminBack);
+      }, [zoomData, unlocked, tab, selectedRecordPhone]);
 
       useEffect(() => {
         const timer = setInterval(() => {
